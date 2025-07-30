@@ -20,7 +20,6 @@ async fn main() -> std::io::Result<()> {
     let host = "0.0.0.0";
     
     println!("App is listening at port: http://{}:{}", host, port);
-    
     HttpServer::new(|| {
         App::new()
             .service(hello)
