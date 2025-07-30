@@ -58,51 +58,51 @@ jobs:
           docker build --platform linux/amd64 -t $DOCKER_IMAGE .
           docker push $DOCKER_IMAGE
           echo "docker_image=$DOCKER_IMAGE" >> "$GITHUB_OUTPUT"
-  # deploy:
-  #   needs: auth-and-build
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: read
-  #     id-token: write
-  #   steps:
-  #     - id: auth
-  #       name: 'Authenticate to Google Cloud'
-  #       uses: google-github-actions/auth@v2
-  #       with:
-  #         workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
-  #         service_account: '${{env.SERVICE_ACCOUNT}}'
-  #     - name: 'Build and Push Container'
-  #       run: |
-  #         echo '${{ needs.auth-and-build.outputs.docker_image }}'
-  #         echo 'JWT_SECRET: ${{ secrets.JWT_SECRET }}'
-  #         if [ -z "${{ secrets.JWT_SECRET }}" ]; then
-  #           echo "JWT_SECRET is empty or not set"
-  #         else
-  #           echo "JWT_SECRET is set (length: ${#JWT_SECRET})"
-  #         fi
-  #       env:
-  #         JWT_SECRET: ${{ secrets.JWT_SECRET }}
-  #     - name: 'Deploy to Cloud Run'
-  #       uses: google-github-actions/deploy-cloudrun@v2
-  #       with:
-  #         service: '${{ env.SERVICE }}'
-  #         region: '${{ env.REGION }}'
-  #         image: '${{ needs.auth-and-build.outputs.docker_image }}'
-  #         env_vars_update_strategy: overwrite
-  #         secrets: |
-  #             OPENAI_API_KEY=OPENAI_API_KEY:latest 
-  #             WEAVIATE_API_KEY=WEAVIATE_API_KEY:latest 
-  #             WEAVIATE_URL=WEAVIATE_URL:latest 
-  #             JWT_SECRET=JWT_SECRET:latest 
-  #             NEO4J_PASSWORD=NEO4J_PASSWORD:latest
-  #             NEO4J_URI=NEO4J_URI:latest
-  #             NEO4J_USER=NEO4J_USER:latest
-  #             SUPABASE_URL=SUPABASE_URL:latest
-  #             SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest
-  #             STRIPE_PUBLIC_KEY=STRIPE_PUBLIC_KEY:latest
-  #             STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest
-  #             TAVILY_API_KEY=TAVILY_API_KEY:latest
-  #             NOTION_INTEGRATION_API_KEY=NOTION_INTEGRATION_API_KEY:latest
-  #             NOTION_FEEDBACK_DATABASE_ID=NOTION_FEEDBACK_DATABASE_ID:latest
-  #     - name: 'Show output'
-  #       run: echo "Deployed to ${{ steps.deploy.outputs.url }}"
+  deploy:
+    needs: auth-and-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - id: auth
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
+          service_account: '${{env.SERVICE_ACCOUNT}}'
+      - name: 'Build and Push Container'
+        run: |
+          echo '${{ needs.auth-and-build.outputs.docker_image }}'
+          echo 'JWT_SECRET: ${{ secrets.JWT_SECRET }}'
+          if [ -z "${{ secrets.JWT_SECRET }}" ]; then
+            echo "JWT_SECRET is empty or not set"
+          else
+            echo "JWT_SECRET is set (length: ${#JWT_SECRET})"
+          fi
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      - name: 'Deploy to Cloud Run'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: '${{ env.SERVICE }}'
+          region: '${{ env.REGION }}'
+          image: '${{ needs.auth-and-build.outputs.docker_image }}'
+          env_vars_update_strategy: overwrite
+          secrets: |
+              OPENAI_API_KEY=OPENAI_API_KEY:latest 
+              WEAVIATE_API_KEY=WEAVIATE_API_KEY:latest 
+              WEAVIATE_URL=WEAVIATE_URL:latest 
+              JWT_SECRET=JWT_SECRET:latest 
+              NEO4J_PASSWORD=NEO4J_PASSWORD:latest
+              NEO4J_URI=NEO4J_URI:latest
+              NEO4J_USER=NEO4J_USER:latest
+              SUPABASE_URL=SUPABASE_URL:latest
+              SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest
+              STRIPE_PUBLIC_KEY=STRIPE_PUBLIC_KEY:latest
+              STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest
+              TAVILY_API_KEY=TAVILY_API_KEY:latest
+              NOTION_INTEGRATION_API_KEY=NOTION_INTEGRATION_API_KEY:latest
+              NOTION_FEEDBACK_DATABASE_ID=NOTION_FEEDBACK_DATABASE_ID:latest
+      - name: 'Show output'
+        run: echo "Deployed to ${{ steps.deploy.outputs.url }}"
