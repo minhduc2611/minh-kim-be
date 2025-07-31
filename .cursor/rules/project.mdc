@@ -1,0 +1,354 @@
+---
+alwaysApply: false
+---
+
+#[R001] Response Structure
+
+- Use `PaginatedResponse<T>` for all paginated API endpoints
+- Always include complete pagination metadata:
+  - `total`: Total number of items
+  - `limit`: Number of items per page
+  - `offset`: Number of items skipped
+  - `current_page`: Current page number (1-based)
+  - `total_pages`: Total number of pages
+  - `has_next`: Boolean indicating if there are more pages
+  - `has_previous`: Boolean indicating if there are previous pages
+- API Response Format
+
+```json
+{
+  "success": true,
+  "data": [...],
+  "pagination": {
+    "total": 150,
+    "limit": 10,
+    "offset": 20,
+    "current_page": 3,
+    "total_pages": 15,
+    "has_next": true,
+    "has_previous": true
+  }
+}
+```
+
+## Standardized JSON Response Format
+
+### Required Fields
+
+ALL API responses MUST include these fields:
+
+```json
+{
+  "success": bool,        // Operation success status
+  "data": any,           // Response payload (null for errors)
+  "pagination": object,  // Pagination info (null for non-paginated)
+  "message": string,     // Human-readable message (null if none)
+  "error": string        // Error type (null for success)
+}
+```
+
+### Response Types
+
+#### Success Response (Non-Paginated)
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "pagination": null,
+  "message": "Operation completed successfully",
+  "error": null
+}
+```
+
+#### Success Response (Paginated)
+
+```json
+{
+  "success": true,
+  "data": [...],
+  "pagination": {
+    "total": 150,
+    "limit": 10,
+    "offset": 20,
+    "current_page": 3,
+    "total_pages": 15,
+    "has_next": true,
+    "has_previous": true
+  },
+  "message": null,
+  "error": null
+}
+```
+
+#### Error Response
+
+```json
+{
+  "success": false,
+  "data": null,
+  "pagination": null,
+  "message": "Detailed error description",
+  "error": "ValidationError" | "DatabaseError" | "NotFound" | "Unauthorized"
+}
+```
+
+#### Empty Results (Paginated)
+
+```json
+{
+  "success": true,
+  "data": [],
+  "pagination": {
+    "total": 0,
+    "limit": 50,
+    "offset": 0,
+    "current_page": 1,
+    "total_pages": 0,
+    "has_next": false,
+    "has_previous": false
+  },
+  "message": "No results found",
+  "error": null
+}
+```
+
+## Global Pagination Standards
+
+### Response Structure
+
+- Use `PaginatedResponse<T>` for all paginated API endpoints
+- Always include complete pagination metadata:
+  - `total`: Total number of items
+  - `limit`: Number of items per page
+  - `offset`: Number of items skipped
+  - `current_page`: Current page number (1-based)
+  - `total_pages`: Total number of pages
+  - `has_next`: Boolean indicating if there are more pages
+  - `has_previous`: Boolean indicating if there are previous pages
+
+### Query Parameters
+
+- `limit`: Optional, default 50, maximum 100
+- `offset`: Optional, default 0, minimum 0
+
+### DAO Layer Rules
+
+- Always use two queries for paginated results:
+  1. Count query for total
+  2. Data query with SKIP/LIMIT
+- Return `PaginatedResponse<T>` from repository layer
+
+### Service Layer Rules
+
+- Validate pagination parameters:
+  - `limit`: 1-100 range
+  - `offset`: non-negative
+- Use `PaginatedResponse<T>` throughout service layer
+
+### Controller Layer Rules
+
+- Use query structs for pagination parameters
+- Handle empty results with proper pagination metadata
+- Consistent error handling for validation errors
+- ALWAYS follow standardized JSON response format
+
+### Error Types
+
+- `ValidationError`: Input validation failures
+- `DatabaseError`: Database operation failures
+- `NotFound`: Resource not found
+- `Unauthorized`: Authentication/authorization failures
+
+### Examples
+
+```rust
+// DAO Query
+"MATCH (n:Node) RETURN count(n) as total"
+"MATCH (n:Node) RETURN n ORDER BY n.updated_at DESC SKIP $offset LIMIT $limit"
+
+// Service Validation
+if limit <= 0 || limit > 100 {
+    return Err(ValidationError("Invalid limit"));
+}
+
+// Controller Success Response (Paginated)
+Ok(HttpResponse::Ok().json(json!({
+    "success": true,
+    "data": paginated_response.data,
+    "pagination": paginated_response.pagination,
+    "message": null,
+    "error": null
+})))
+
+// Controller Error Response
+Ok(HttpResponse::BadRequest().json(json!({
+    "success": false,
+    "data": null,
+    "pagination": null,
+    "message": "Invalid request parameters",
+    "error": "ValidationError"
+})))
+```
+
+# Project Cursor Rules
+
+## Standardized JSON Response Format
+
+### Required Fields
+
+ALL API responses MUST include these fields:
+
+```json
+{
+  "success": bool,        // Operation success status
+  "data": any,           // Response payload (null for errors)
+  "pagination": object,  // Pagination info (null for non-paginated)
+  "message": string,     // Human-readable message (null if none)
+  "error": string        // Error type (null for success)
+}
+```
+
+### Response Types
+
+#### Success Response (Non-Paginated)
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "pagination": null,
+  "message": "Operation completed successfully",
+  "error": null
+}
+```
+
+#### Success Response (Paginated)
+
+```json
+{
+  "success": true,
+  "data": [...],
+  "pagination": {
+    "total": 150,
+    "limit": 10,
+    "offset": 20,
+    "current_page": 3,
+    "total_pages": 15,
+    "has_next": true,
+    "has_previous": true
+  },
+  "message": null,
+  "error": null
+}
+```
+
+#### Error Response
+
+```json
+{
+  "success": false,
+  "data": null,
+  "pagination": null,
+  "message": "Detailed error description",
+  "error": "ValidationError" | "DatabaseError" | "NotFound" | "Unauthorized"
+}
+```
+
+#### Empty Results (Paginated)
+
+```json
+{
+  "success": true,
+  "data": [],
+  "pagination": {
+    "total": 0,
+    "limit": 50,
+    "offset": 0,
+    "current_page": 1,
+    "total_pages": 0,
+    "has_next": false,
+    "has_previous": false
+  },
+  "message": "No results found",
+  "error": null
+}
+```
+
+## Global Pagination Standards
+
+### Response Structure
+
+- Use `PaginatedResponse<T>` for all paginated API endpoints
+- Always include complete pagination metadata:
+  - `total`: Total number of items
+  - `limit`: Number of items per page
+  - `offset`: Number of items skipped
+  - `current_page`: Current page number (1-based)
+  - `total_pages`: Total number of pages
+  - `has_next`: Boolean indicating if there are more pages
+  - `has_previous`: Boolean indicating if there are previous pages
+
+### Query Parameters
+
+- `limit`: Optional, default 50, maximum 100
+- `offset`: Optional, default 0, minimum 0
+
+### DAO Layer Rules
+
+- Always use two queries for paginated results:
+  1. Count query for total
+  2. Data query with SKIP/LIMIT
+- Return `PaginatedResponse<T>` from repository layer
+
+### Service Layer Rules
+
+- Validate pagination parameters:
+  - `limit`: 1-100 range
+  - `offset`: non-negative
+- Use `PaginatedResponse<T>` throughout service layer
+
+### Controller Layer Rules
+
+- Use query structs for pagination parameters
+- Handle empty results with proper pagination metadata
+- Consistent error handling for validation errors
+- ALWAYS follow standardized JSON response format
+
+### Error Types
+
+- `ValidationError`: Input validation failures
+- `DatabaseError`: Database operation failures
+- `NotFound`: Resource not found
+- `Unauthorized`: Authentication/authorization failures
+
+### Examples
+
+```rust
+// DAO Query
+"MATCH (n:Node) RETURN count(n) as total"
+"MATCH (n:Node) RETURN n ORDER BY n.updated_at DESC SKIP $offset LIMIT $limit"
+
+// Service Validation
+if limit <= 0 || limit > 100 {
+    return Err(ValidationError("Invalid limit"));
+}
+
+// Controller Success Response (Paginated)
+Ok(HttpResponse::Ok().json(json!({
+    "success": true,
+    "data": paginated_response.data,
+    "pagination": paginated_response.pagination,
+    "message": null,
+    "error": null
+})))
+
+// Controller Error Response
+Ok(HttpResponse::BadRequest().json(json!({
+    "success": false,
+    "data": null,
+    "pagination": null,
+    "message": "Invalid request parameters",
+    "error": "ValidationError"
+})))
+```

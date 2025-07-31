@@ -1,9 +1,9 @@
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 
 mod controllers;
+mod dao;
 mod database;
 mod models;
-mod dao;
 mod services;
 
 use controllers::canvas_controller;
@@ -22,19 +22,20 @@ async fn hello() -> impl Responder {
 async fn main() -> std::io::Result<()> {
     let port = 8080;
     let host = "0.0.0.0";
-    
+
     // Initialize Neo4j database connection
     let database = database::init_database()
         .await
         .expect("Failed to connect to Neo4j database");
-    
+
     // Set up dependency injection
     let canvas_repository: Arc<dyn CanvasRepository> = Arc::new(CanvasDao::new(database.clone()));
-    let canvas_service: Arc<dyn CanvasServiceTrait> = Arc::new(CanvasService::new(canvas_repository));
-    
+    let canvas_service: Arc<dyn CanvasServiceTrait> =
+        Arc::new(CanvasService::new(canvas_repository));
+
     println!("Connected to Neo4j database successfully!");
     println!("App is listening at port: http://{}:{}", host, port);
-    
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(database.clone()))
@@ -44,7 +45,6 @@ async fn main() -> std::io::Result<()> {
             .service(canvas_controller::create_canvas)
             .service(canvas_controller::get_canvas_list)
             .service(canvas_controller::get_canvas)
-            .service(canvas_controller::get_canvases_by_author)
             .service(canvas_controller::update_canvas)
             .service(canvas_controller::delete_canvas)
     })

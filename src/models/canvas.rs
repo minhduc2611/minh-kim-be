@@ -25,6 +25,13 @@ pub struct UpdateCanvasRequest {
     pub system_instruction: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GetCanvasesRequest {
+    pub author_id: String,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
 #[derive(Debug)]
 pub struct InsertCanvas {
     pub id: String,
@@ -42,4 +49,4 @@ impl From<CreateCanvasRequest> for InsertCanvas {
             system_instruction: req.system_instruction.unwrap_or_default(),
         }
     }
-} 
+}

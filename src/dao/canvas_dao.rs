@@ -1,11 +1,11 @@
-use crate::database::Database;
-use crate::models::canvas::{Canvas, InsertCanvas, UpdateCanvasRequest};
 use crate::dao::canvas_dao_trait::{CanvasRepository, CanvasRepositoryError};
+use crate::database::Database;
+use crate::models::canvas::{Canvas, GetCanvasesRequest, InsertCanvas, UpdateCanvasRequest};
+use crate::models::common::PaginatedResponse;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use neo4rs::query;
 use std::collections::HashMap;
-
 
 pub struct CanvasDao {
     database: Database,
@@ -19,9 +19,12 @@ impl CanvasDao {
 
 #[async_trait]
 impl CanvasRepository for CanvasDao {
-    async fn create_canvas(&self, insert_canvas: InsertCanvas) -> Result<Canvas, CanvasRepositoryError> {
+    async fn create_canvas(
+        &self,
+        insert_canvas: InsertCanvas,
+    ) -> Result<Canvas, CanvasRepositoryError> {
         let graph = self.database.get_graph();
-        
+
         let cypher = query(
             "CREATE (c:Canvas {
                 id: $id,
@@ -31,32 +34,42 @@ impl CanvasRepository for CanvasDao {
                 createdAt: datetime(),
                 updatedAt: datetime()
             })
-            RETURN c"
+            RETURN c",
         )
         .param("id", insert_canvas.id.clone())
         .param("author_id", insert_canvas.author_id.clone())
         .param("name", insert_canvas.name.clone())
-        .param("system_instruction", insert_canvas.system_instruction.clone());
+        .param(
+            "system_instruction",
+            insert_canvas.system_instruction.clone(),
+        );
 
-        let mut result = graph.execute(cypher).await
+        let mut result = graph
+            .execute(cypher)
+            .await
             .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
 
-        if let Some(row) = result.next().await
-            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))? {
-            
-            let node = row.get::<neo4rs::Node>("c")
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("c")
                 .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
-            
+
             Self::node_to_canvas(node)
         } else {
-            Err(CanvasRepositoryError::DatabaseError("Failed to create canvas".to_string()))
+            Err(CanvasRepositoryError::DatabaseError(
+                "Failed to create canvas".to_string(),
+            ))
         }
     }
 
     async fn get_canvas_by_id(&self, id: &str) -> Result<Option<Canvas>, CanvasRepositoryError> {
         // Get the Neo4j graph database connection from the database instance
         let graph = self.database.get_graph();
-        
+
         // Create a Cypher query to find a Canvas node with the specified id
         // The query matches a Canvas node where the id property equals the provided parameter
         let cypher = query("MATCH (c:Canvas {id: $id}) RETURN c")
@@ -65,19 +78,24 @@ impl CanvasRepository for CanvasDao {
 
         // Execute the Cypher query asynchronously against the Neo4j database
         // Convert any execution errors to CanvasRepositoryError::DatabaseError
-        let mut result = graph.execute(cypher).await
+        let mut result = graph
+            .execute(cypher)
+            .await
             .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
 
         // Check if the query returned any results by getting the next row
         // Convert any iteration errors to CanvasRepositoryError::DatabaseError
-        if let Some(row) = result.next().await
-            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))? {
-            
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
             // Extract the Canvas node from the result row using the alias "c"
             // Convert any extraction errors to CanvasRepositoryError::InvalidData
-            let node = row.get::<neo4rs::Node>("c")
+            let node = row
+                .get::<neo4rs::Node>("c")
                 .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
-            
+
             // Convert the Neo4j node to a Canvas struct and wrap in Some
             // The ? operator propagates any conversion errors from node_to_canvas
             Ok(Some(Self::node_to_canvas(node)?))
@@ -87,35 +105,79 @@ impl CanvasRepository for CanvasDao {
         }
     }
 
-    async fn get_canvases_by_author(&self, author_id: &str) -> Result<Vec<Canvas>, CanvasRepositoryError> {
+    async fn get_canvases(
+        &self,
+        request: GetCanvasesRequest,
+    ) -> Result<PaginatedResponse<Canvas>, CanvasRepositoryError> {
         let graph = self.database.get_graph();
-        
-        let cypher = query(
+
+        // Set default values for pagination
+        let limit = request.limit.unwrap_or(50); // Default limit of 50
+        let offset = request.offset.unwrap_or(0); // Default offset of 0
+
+        // First query: Get total count
+        let count_cypher = query(
+            "MATCH (c:Canvas {authorId: $author_id})
+            RETURN count(c) as total",
+        )
+        .param("author_id", request.author_id.clone());
+
+        let mut count_result = graph
+            .execute(count_cypher)
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
+
+        let total = if let Some(row) = count_result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
+            row.get::<i64>("total")
+                .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?
+        } else {
+            0
+        };
+
+        // Second query: Get paginated data
+        let data_cypher = query(
             "MATCH (c:Canvas {authorId: $author_id})
             RETURN c
-            ORDER BY c.updatedAt DESC"
+            ORDER BY c.updatedAt DESC
+            SKIP $offset
+            LIMIT $limit",
         )
-        .param("author_id", author_id);
+        .param("author_id", request.author_id)
+        .param("offset", offset)
+        .param("limit", limit);
 
-        let mut result = graph.execute(cypher).await
+        let mut data_result = graph
+            .execute(data_cypher)
+            .await
             .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
 
         let mut canvases = Vec::new();
-        while let Some(row) = result.next().await
-            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))? {
-            
-            let node = row.get::<neo4rs::Node>("c")
+        while let Some(row) = data_result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("c")
                 .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
-            
+
             canvases.push(Self::node_to_canvas(node)?);
         }
 
-        Ok(canvases)
+        Ok(PaginatedResponse::new(canvases, total, limit, offset))
     }
 
-    async fn update_canvas(&self, id: &str, updates: UpdateCanvasRequest) -> Result<Option<Canvas>, CanvasRepositoryError> {
+    async fn update_canvas(
+        &self,
+        id: &str,
+        updates: UpdateCanvasRequest,
+    ) -> Result<Option<Canvas>, CanvasRepositoryError> {
         let graph = self.database.get_graph();
-        
+
         let mut set_clauses = Vec::new();
         let mut params: HashMap<String, neo4rs::BoltType> = HashMap::new();
         params.insert("id".to_string(), id.into());
@@ -127,7 +189,10 @@ impl CanvasRepository for CanvasDao {
 
         if let Some(system_instruction) = &updates.system_instruction {
             set_clauses.push("c.systemInstruction = $system_instruction");
-            params.insert("system_instruction".to_string(), system_instruction.clone().into());
+            params.insert(
+                "system_instruction".to_string(),
+                system_instruction.clone().into(),
+            );
         }
 
         if set_clauses.is_empty() {
@@ -148,15 +213,20 @@ impl CanvasRepository for CanvasDao {
             cypher = cypher.param(&key, value);
         }
 
-        let mut result = graph.execute(cypher).await
+        let mut result = graph
+            .execute(cypher)
+            .await
             .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
 
-        if let Some(row) = result.next().await
-            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))? {
-            
-            let node = row.get::<neo4rs::Node>("c")
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("c")
                 .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
-            
+
             Ok(Some(Self::node_to_canvas(node)?))
         } else {
             Ok(None)
@@ -165,40 +235,66 @@ impl CanvasRepository for CanvasDao {
 
     async fn delete_canvas(&self, id: &str) -> Result<(), CanvasRepositoryError> {
         let graph = self.database.get_graph();
-        
+
+        // Use a single query that both deletes and returns the count of deleted nodes
+        // This approach is atomic and avoids race conditions
         let cypher = query(
-            "MATCH (c:Canvas {id: $id})
-            OPTIONAL MATCH (c)-[:CONTAINS]->(t:Topic)
-            DETACH DELETE c, t"
+            "MATCH (c:Canvas {id: $id}) 
+             DETACH DELETE c 
+             RETURN count(c) as deleted_count",
         )
         .param("id", id);
 
-        let _ = graph.execute(cypher).await
+        let mut result = graph
+            .execute(cypher)
+            .await
             .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
 
-        Ok(())
-    }
+        // Check the result to verify deletion
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let deleted_count = row
+                .get::<i64>("deleted_count")
+                .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
 
+            if deleted_count == 0 {
+                return Err(CanvasRepositoryError::NotFound);
+            }
+
+            Ok(())
+        } else {
+            Err(CanvasRepositoryError::DatabaseError(
+                "Failed to execute delete query".to_string(),
+            ))
+        }
+    }
 }
 
 impl CanvasDao {
     fn node_to_canvas(node: neo4rs::Node) -> Result<Canvas, CanvasRepositoryError> {
-        let id = node.get::<String>("id")
+        let id = node
+            .get::<String>("id")
             .map_err(|e| CanvasRepositoryError::InvalidData(format!("id: {}", e)))?;
-        
-        let author_id = node.get::<String>("authorId")
+
+        let author_id = node
+            .get::<String>("authorId")
             .map_err(|e| CanvasRepositoryError::InvalidData(format!("authorId: {}", e)))?;
-        
-        let name = node.get::<String>("name")
+
+        let name = node
+            .get::<String>("name")
             .map_err(|e| CanvasRepositoryError::InvalidData(format!("name: {}", e)))?;
-        
-        let system_instruction = node.get::<String>("systemInstruction")
-            .unwrap_or_default();
-        
-        let created_at_raw = node.get::<String>("createdAt")
+
+        let system_instruction = node.get::<String>("systemInstruction").unwrap_or_default();
+
+        let created_at_raw = node
+            .get::<String>("createdAt")
             .map_err(|e| CanvasRepositoryError::InvalidData(format!("createdAt: {}", e)))?;
-        
-        let updated_at_raw = node.get::<String>("updatedAt")
+
+        let updated_at_raw = node
+            .get::<String>("updatedAt")
             .map_err(|e| CanvasRepositoryError::InvalidData(format!("updatedAt: {}", e)))?;
 
         Ok(Canvas {
@@ -213,7 +309,8 @@ impl CanvasDao {
 
     fn parse_neo4j_datetime(datetime_str: &str) -> Result<DateTime<Utc>, CanvasRepositoryError> {
         // Neo4j datetime() returns ISO 8601 format that chrono can parse
-        datetime_str.parse::<DateTime<Utc>>()
-            .map_err(|e| CanvasRepositoryError::InvalidData(format!("Failed to parse datetime: {}", e)))
+        datetime_str.parse::<DateTime<Utc>>().map_err(|e| {
+            CanvasRepositoryError::InvalidData(format!("Failed to parse datetime: {}", e))
+        })
     }
-} 
+}
