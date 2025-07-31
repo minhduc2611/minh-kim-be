@@ -1,0 +1,42 @@
+## Code Style & Formatting
+
+### Rust Conventions
+- Follow standard Rust naming conventions (snake_case for functions/variables, PascalCase for types)
+- Use `rustfmt` formatting standards
+- Prefer explicit types when clarity improves readability
+- Use `clippy` suggestions for code quality
+- Maximum line length: 100 characters
+
+### Controller Methods
+```rust
+pub async fn handle_create_node(req: CreateNodeRequest) -> Result<impl Reply, Rejection> {
+    // Validate input, call service, handle errors
+}
+```
+
+### Error Types
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum DatabaseError {
+    #[error("Connection failed: {0}")]
+    ConnectionFailed(String),
+    #[error("Query failed: {0}")]
+    QueryFailed(String),
+}
+``` 
+
+
+### Project Structure
+
+DAO
+services
+controllers
+models
+transformers
+
+
+
+
+
+
+

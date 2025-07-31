@@ -1,0 +1,68 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "cargo",
+            "command": "build",
+            "problemMatcher": ["$rustc"],
+            "group": "build",
+            "label": "Cargo Build"
+        },
+        {
+            "type": "cargo",
+            "command": "build",
+            "args": ["--release"],
+            "problemMatcher": ["$rustc"],
+            "group": "build",
+            "label": "Cargo Build (Release)"
+        },
+        {
+            "type": "cargo",
+            "command": "run",
+            "problemMatcher": ["$rustc"],
+            "group": "build",
+            "label": "Cargo Run",
+            "options": {
+                "env": {
+                    "RUST_LOG": "debug",
+                    "RUST_BACKTRACE": "1"
+                }
+            }
+        },
+        {
+            "type": "cargo",
+            "command": "test",
+            "problemMatcher": ["$rustc"],
+            "group": "test",
+            "label": "Cargo Test"
+        },
+        {
+            "type": "cargo",
+            "command": "clippy",
+            "args": ["--", "-D", "warnings"],
+            "problemMatcher": ["$rustc"],
+            "group": "build",
+            "label": "Cargo Clippy"
+        },
+        {
+            "type": "cargo",
+            "command": "check",
+            "problemMatcher": ["$rustc"],
+            "group": "build",
+            "label": "Cargo Check"
+        },
+        {
+            "type": "shell",
+            "command": "cargo",
+            "args": ["fmt"],
+            "group": "build",
+            "label": "Cargo Format",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+} 

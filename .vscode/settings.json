@@ -1,0 +1,13 @@
+{
+    "rust-analyzer.cargo.buildScripts.enable": true,
+    "rust-analyzer.checkOnSave.command": "clippy",
+    "rust-analyzer.procMacro.enable": true,
+    "files.associations": {
+        "*.rs": "rust"
+    },
+    "editor.formatOnSave": true,
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true
+    }
+} 

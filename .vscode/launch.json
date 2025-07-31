@@ -1,0 +1,152 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug minh-kim-be (LLDB)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=minh-kim-be",
+                    "--package=minh-kim-be"
+                ],
+                "filter": {
+                    "name": "minh-kim-be",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "debug"
+                },
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                }
+            ],
+            "sourceLanguages": ["rust"],
+            "terminal": "integrated"
+        },
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Debug minh-kim-be (Windows)",
+            "program": "${workspaceFolder}/target/debug/minh-kim-be.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "debug"
+                },
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Cargo Build"
+        },
+        {
+            "type": "gdb",
+            "request": "launch",
+            "name": "Debug minh-kim-be (GDB)",
+            "program": "${workspaceFolder}/target/debug/minh-kim-be",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "debug"
+                },
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Cargo Build"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug minh-kim-be (with Neo4j env)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=minh-kim-be",
+                    "--package=minh-kim-be"
+                ],
+                "filter": {
+                    "name": "minh-kim-be",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "debug"
+                },
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                },
+                {
+                    "name": "NEO4J_URI",
+                    "value": "bolt://localhost:7687"
+                },
+                {
+                    "name": "NEO4J_USERNAME",
+                    "value": "neo4j"
+                },
+                {
+                    "name": "NEO4J_PASSWORD",
+                    "value": "password"
+                }
+            ],
+            "sourceLanguages": ["rust"],
+            "terminal": "integrated"
+        },
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Debug minh-kim-be (Windows with Neo4j env)",
+            "program": "${workspaceFolder}/target/debug/minh-kim-be.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "debug"
+                },
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                },
+                {
+                    "name": "NEO4J_URI",
+                    "value": "bolt://localhost:7687"
+                },
+                {
+                    "name": "NEO4J_USERNAME",
+                    "value": "neo4j"
+                },
+                {
+                    "name": "NEO4J_PASSWORD",
+                    "value": "password"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Cargo Build"
+        }
+    ]
+} 
