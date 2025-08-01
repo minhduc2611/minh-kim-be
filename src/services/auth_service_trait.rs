@@ -55,6 +55,18 @@ pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthTokenRequest {
+    pub access_token: String,
+    pub provider: String, // "google", "github", etc.
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthCallbackRequest {
+    pub code: String,
+    pub state: Option<String>,
+}
+
 #[async_trait]
 pub trait AuthServiceTrait: Send + Sync {
     /// Sign up new user with email and password
@@ -77,6 +89,10 @@ pub trait AuthServiceTrait: Send + Sync {
 
     /// Logout user (invalidate tokens)
     async fn logout(&self, token: &str) -> Result<(), AuthServiceError>;
+
+    /// Verify OAuth token from Supabase after OAuth flow completion
+    /// (AuthFlow-google-signup-login 8) Frontend ->> Backend: Sends access_token
+    async fn verify_oauth_token(&self, request: OAuthTokenRequest) -> Result<AuthUser, AuthServiceError>;
 
     /// Validate email format
     fn validate_email(&self, email: &str) -> Result<(), AuthServiceError>;

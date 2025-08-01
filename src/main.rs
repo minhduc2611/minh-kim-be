@@ -74,6 +74,7 @@ async fn main() -> std::io::Result<()> {
             .service(auth_controller::verify_token)
             .service(auth_controller::refresh_token)
             .service(auth_controller::logout)
+            .service(auth_controller::verify_oauth_token)
             // .service(auth_controller::get_user_by_id)
             // Canvas CRUD operations
             .service(canvas_controller::create_canvas)

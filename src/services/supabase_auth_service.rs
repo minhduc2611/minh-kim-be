@@ -1,6 +1,6 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, RefreshTokenRequest,
-    SignUpRequest,
+    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, OAuthTokenRequest,
+    RefreshTokenRequest, SignUpRequest,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -319,6 +319,24 @@ impl AuthServiceTrait for SupabaseAuthService {
         // Supabase handles logout client-side by removing tokens
         // For server-side logout, you might revoke the token if needed
         Ok(())
+    }
+
+    async fn verify_oauth_token(&self, request: OAuthTokenRequest) -> Result<AuthUser, AuthServiceError> {
+        // (AuthFlow-google-signup-login 8) Frontend ->> Backend: Sends access_token
+        // For Supabase OAuth, the token verification is the same as regular token verification
+        // The OAuth flow happens client-side, and we just verify the resulting Supabase JWT
+        
+        // Validate that this is a supported provider
+        let supported_providers = vec!["google", "github", "facebook", "twitter"];
+        if !supported_providers.contains(&request.provider.as_str()) {
+            return Err(AuthServiceError::ValidationError(
+                format!("Unsupported OAuth provider: {}", request.provider)
+            ));
+        }
+
+        // Verify the token using the same method as regular tokens
+        // Note: Supabase OAuth tokens are standard Supabase JWT tokens after OAuth flow
+        self.verify_token(&request.access_token).await
     }
 
     fn validate_email(&self, email: &str) -> Result<(), AuthServiceError> {

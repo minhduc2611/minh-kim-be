@@ -1,5 +1,5 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, LoginRequest, RefreshTokenRequest, SignUpRequest,
+    AuthServiceError, AuthServiceTrait, LoginRequest, OAuthTokenRequest, RefreshTokenRequest, SignUpRequest,
 };
 use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder, Result};
 use serde::{Deserialize, Serialize};
@@ -310,3 +310,61 @@ pub async fn logout(
     }
 }
 
+/// POST /auth/oauth/verify - Verify OAuth token from frontend after OAuth flow
+/// (AuthFlow-google-signup-login 8) Frontend ->> Backend: Sends access_token
+#[post("/auth/oauth/verify")]
+pub async fn verify_oauth_token(
+    service: web::Data<Arc<dyn AuthServiceTrait>>,
+    request: web::Json<OAuthTokenRequest>,
+) -> Result<impl Responder> {
+    match service.verify_oauth_token(request.into_inner()).await {
+        Ok(user) => {
+            // (AuthFlow-google-signup-login 9) Backend -->> Frontend: Protected resource
+            Ok(HttpResponse::Ok().json(AuthResponse {
+                success: true,
+                data: Some(user),
+                message: Some("OAuth token verified successfully".to_string()),
+                error: None,
+            }))
+        }
+        Err(AuthServiceError::ValidationError(msg)) => {
+            Ok(HttpResponse::BadRequest().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some(msg),
+                error: Some("ValidationError".to_string()),
+            }))
+        }
+        Err(AuthServiceError::InvalidToken(msg)) => {
+            Ok(HttpResponse::Unauthorized().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some(msg),
+                error: Some("InvalidToken".to_string()),
+            }))
+        }
+        Err(AuthServiceError::TokenExpired) => {
+            Ok(HttpResponse::Unauthorized().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Token has expired".to_string()),
+                error: Some("TokenExpired".to_string()),
+            }))
+        }
+        Err(AuthServiceError::ExternalServiceError(msg)) => Ok(HttpResponse::InternalServerError()
+            .json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Internal server error".to_string()),
+                error: Some(format!("ExternalServiceError: {}", msg)),
+            })),
+        Err(err) => Ok(
+            HttpResponse::InternalServerError().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Internal server error".to_string()),
+                error: Some(format!("{:?}", err)),
+            }),
+        ),
+    }
+}

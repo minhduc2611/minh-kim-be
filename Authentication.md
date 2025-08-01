@@ -16,54 +16,26 @@ sequenceDiagram
   (AuthFlow-email-signup 8) Supabase -->> Backend: Valid user data
   (AuthFlow-email-signup 9) Backend -->> Frontend: Protected resource
 
-```
+%% Email login (existing)
+  (AuthFlow-email-login 1) User ->> Frontend: Log in with email/password
+  (AuthFlow-email-login 2) Frontend ->> Supabase: supabase.auth.signIn(email, password)
+  (AuthFlow-email-login 3) Supabase -->> Frontend: JWT tokens
+  (AuthFlow-email-login 4) Frontend ->> Backend: Bearer token
+  (AuthFlow-email-login 5) Backend ->> Supabase: auth.getUser(token)
+  (AuthFlow-email-login 6) Supabase -->> Backend: Valid user
+  (AuthFlow-email-login 7) Backend -->> Frontend: Protected resource
 
-```
-graph TD
-    A[Client/Frontend] --> B[Auth Controller]
-    B --> C[AuthService]
-    C --> D[Supabase Auth Service]
-    C --> E[JWT + Weviate Auth Service]
-
-    subgraph "Auth Endpoints"
-        F["POST /auth/signup<br/>SignUpRequest"]
-        G["POST /auth/login<br/>LoginRequest"]
-        H["GET /auth/verify<br/>Bearer Token"]
-        I["POST /auth/refresh<br/>RefreshTokenRequest"]
-        J["POST /auth/logout<br/>Bearer Token"]
-        K["GET /auth/user/{user_id}<br/>Path Parameter"]
-    end
-
-    subgraph "Auth Flow Steps"
-        L["(1) User signup/login"]
-        M["(2) Frontend → Auth Service"]
-        N["(3) Email confirmation (optional)"]
-        O["(5) JWT tokens returned"]
-        P["(6) Bearer token in header"]
-        Q["(7) Backend → Auth Service"]
-        R["(8) Valid user data"]
-        S["(9) Protected resource"]
-    end
-
-    subgraph "Response Format"
-        T["AuthResponse{<br/>success: bool<br/>data: Option<T><br/>message: Option<String><br/>error: Option<String><br/>}"]
-    end
-
-    A --> F
-    A --> G
-    A --> H
-    A --> I
-    A --> J
-    A --> K
-
-    F --> L
-    G --> L
-    H --> P
-
-    style F fill:#e1f5fe
-    style G fill:#e1f5fe
-    style H fill:#f3e5f5
-    style I fill:#fff3e0
-    style J fill:#ffebee
-    style K fill:#e8f5e8
+%% Google OAuth signup/login
+  (AuthFlow-google-signup-login 1) User ->> Frontend: Click "Sign in with Google"
+  (AuthFlow-google-signup-login 2) Frontend ->> Supabase: supabase.auth.signInWithOAuth(provider: google)
+  (AuthFlow-google-signup-login 3) Supabase ->> User: Redirect to Google consent
+  (AuthFlow-google-signup-login 4) User ->> Google: Approve consent
+  (AuthFlow-google-signup-login 5) Google ->> Supabase: OAuth callback
+  (AuthFlow-google-signup-login 6) Supabase -->> Frontend: JWT tokens
+  (AuthFlow-google-signup-login 7) note right of Supabase: Automatic identity linking if email exists :contentReference[oaicite:1]{index=1}
+  (AuthFlow-google-signup-login 8) Frontend ->> Backend: Sends access_token
+%% Backend token validation
+  (AuthFlow-google-signup-login 9) Backend ->> Supabase: auth.getUser(token)
+  (AuthFlow-google-signup-login 10) Supabase -->> Backend: Valid user (possibly linked)
+  (AuthFlow-google-signup-login 11) Backend -->> Frontend: Protected data
 ```

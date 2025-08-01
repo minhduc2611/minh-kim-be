@@ -1,6 +1,6 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, RefreshTokenRequest,
-    SignUpRequest,
+    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, OAuthTokenRequest,
+    RefreshTokenRequest, SignUpRequest,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -376,6 +376,15 @@ impl AuthServiceTrait for BasicJWTWeviateAuthService {
         // JWT tokens are stateless, so logout is typically handled client-side
         // You could implement a token blacklist here if needed
         Ok(())
+    }
+
+    async fn verify_oauth_token(&self, _request: OAuthTokenRequest) -> Result<AuthUser, AuthServiceError> {
+        // For JWT-based auth service, OAuth would need different implementation
+        // This would typically involve verifying OAuth tokens from Google/GitHub directly
+        // For now, returning an error as this needs provider-specific implementation
+        Err(AuthServiceError::ExternalServiceError(
+            "OAuth not implemented for JWT auth service. Use Supabase auth service for OAuth support.".to_string()
+        ))
     }
 
     fn validate_email(&self, email: &str) -> Result<(), AuthServiceError> {

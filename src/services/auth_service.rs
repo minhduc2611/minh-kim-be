@@ -1,6 +1,6 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, RefreshTokenRequest,
-    SignUpRequest,
+    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, OAuthTokenRequest,
+    RefreshTokenRequest, SignUpRequest,
 };
 use crate::services::jwt_weviate_auth_service::BasicJWTWeviateAuthService;
 use crate::services::supabase_auth_service::SupabaseAuthService;
@@ -92,6 +92,10 @@ impl AuthServiceTrait for AuthService {
 
     async fn logout(&self, token: &str) -> Result<(), AuthServiceError> {
         self.implementation.logout(token).await
+    }
+
+    async fn verify_oauth_token(&self, request: OAuthTokenRequest) -> Result<AuthUser, AuthServiceError> {
+        self.implementation.verify_oauth_token(request).await
     }
 
     fn validate_email(&self, email: &str) -> Result<(), AuthServiceError> {
