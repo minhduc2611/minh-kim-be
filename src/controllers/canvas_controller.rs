@@ -1,3 +1,4 @@
+use crate::middleware::AuthenticatedUser;
 use crate::models::canvas::{CreateCanvasRequest, GetCanvasesRequest, UpdateCanvasRequest};
 use crate::models::common::ListCanvasQuery;
 use crate::services::canvas_service_trait::{CanvasServiceError, CanvasServiceTrait};
@@ -6,86 +7,81 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder, Result};
 use serde_json::json;
 use std::sync::Arc;
 
-/// GET /canvas - Get all canvases (list view)
+/// GET /canvas - Get all canvases (list view) - REQUIRES AUTHENTICATION
 #[get("/canvas")]
 pub async fn get_canvas_list(
+    authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
     query: web::Query<ListCanvasQuery>,
 ) -> Result<impl Responder> {
-    // If author_id is provided, filter by author, otherwise get all canvases
-    if let Some(author_id) = &query.author_id {
-        let request = GetCanvasesRequest {
-            author_id: author_id.clone(),
-            limit: query.limit,
-            offset: query.offset,
-        };
+    // If author_id is provided, filter by author, otherwise use authenticated user's ID
+    let author_id = query.author_id.clone().unwrap_or(authenticated_user.user.id.clone());
+    let request = GetCanvasesRequest {
+        author_id,
+        limit: query.limit,
+        offset: query.offset,
+    };
 
-        match service.get_canvases(request).await {
-            Ok(paginated_response) => Ok(HttpResponse::Ok().json(json!({
-                "success": true,
-                "data": paginated_response.data,
-                "pagination": {
-                    "total": paginated_response.pagination.total,
-                    "limit": paginated_response.pagination.limit,
-                    "offset": paginated_response.pagination.offset,
-                    "current_page": paginated_response.pagination.current_page,
-                    "total_pages": paginated_response.pagination.total_pages,
-                    "has_next": paginated_response.pagination.has_next,
-                    "has_previous": paginated_response.pagination.has_previous
-                },
-                "message": null,
-                "error": null
-            }))),
-            Err(CanvasServiceError::ValidationError(msg)) => {
-                Ok(HttpResponse::BadRequest().json(json!({
-                    "success": false,
-                    "data": null,
-                    "pagination": null,
-                    "message": msg,
-                    "error": "ValidationError"
-                })))
-            }
-            Err(CanvasServiceError::DatabaseError(msg)) => Ok(HttpResponse::InternalServerError()
-                .json(json!({
-                    "success": false,
-                    "data": null,
-                    "pagination": null,
-                    "message": msg,
-                    "error": "DatabaseError"
-                }))),
-            Err(CanvasServiceError::NotFound) => Ok(HttpResponse::Ok().json(json!({
-                "success": true,
-                "data": [],
-                "pagination": {
-                    "total": 0,
-                    "limit": query.limit.unwrap_or(50),
-                    "offset": query.offset.unwrap_or(0),
-                    "current_page": 1,
-                    "total_pages": 0,
-                    "has_next": false,
-                    "has_previous": false
-                },
-                "message": "No canvases found for this author",
-                "error": null
-            }))),
+    match service.get_canvases(request).await {
+        Ok(paginated_response) => Ok(HttpResponse::Ok().json(json!({
+            "success": true,
+            "data": paginated_response.data,
+            "pagination": {
+                "total": paginated_response.pagination.total,
+                "limit": paginated_response.pagination.limit,
+                "offset": paginated_response.pagination.offset,
+                "current_page": paginated_response.pagination.current_page,
+                "total_pages": paginated_response.pagination.total_pages,
+                "has_next": paginated_response.pagination.has_next,
+                "has_previous": paginated_response.pagination.has_previous
+            },
+            "message": null,
+            "error": null
+        }))),
+        Err(CanvasServiceError::ValidationError(msg)) => {
+            Ok(HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "data": null,
+                "pagination": null,
+                "message": msg,
+                "error": "ValidationError"
+            })))
         }
-    } else {
-        Ok(HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "data": null,
-            "pagination": null,
-            "message": "To get canvases, please provide an author_id query parameter: GET /canvas?author_id=your_id&limit=10&offset=0",
-            "error": "ValidationError"
-        })))
+        Err(CanvasServiceError::DatabaseError(msg)) => Ok(HttpResponse::InternalServerError()
+            .json(json!({
+                "success": false,
+                "data": null,
+                "pagination": null,
+                "message": msg,
+                "error": "DatabaseError"
+            }))),
+        Err(CanvasServiceError::NotFound) => Ok(HttpResponse::Ok().json(json!({
+            "success": true,
+            "data": [],
+            "pagination": {
+                "total": 0,
+                "limit": query.limit.unwrap_or(50),
+                "offset": query.offset.unwrap_or(0),
+                "current_page": 1,
+                "total_pages": 0,
+                "has_next": false,
+                "has_previous": false
+            },
+            "message": "No canvases found for this author",
+            "error": null
+        }))),
     }
 }
 
-/// POST /canvas - Create a new canvas
+/// POST /canvas - Create a new canvas - REQUIRES AUTHENTICATION
 #[post("/canvas")]
 pub async fn create_canvas(
+    authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
-    req: web::Json<CreateCanvasRequest>,
+    mut req: web::Json<CreateCanvasRequest>,
 ) -> Result<impl Responder> {
+    // Set the author_id to the authenticated user's ID
+    req.author_id = authenticated_user.user.id.clone();
     match service.create_canvas(req.into_inner()).await {
         Ok(canvas) => Ok(HttpResponse::Created().json(json!({
             "success": true,
@@ -121,9 +117,10 @@ pub async fn create_canvas(
     }
 }
 
-/// GET /canvas/{id} - Get canvas by ID
+/// GET /canvas/{id} - Get canvas by ID - REQUIRES AUTHENTICATION
 #[get("/canvas/{id}")]
 pub async fn get_canvas(
+    _authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
     path: web::Path<String>,
 ) -> Result<impl Responder> {
@@ -164,9 +161,10 @@ pub async fn get_canvas(
     }
 }
 
-/// PUT /canvas/{id} - Update canvas
+/// PUT /canvas/{id} - Update canvas - REQUIRES AUTHENTICATION
 #[put("/canvas/{id}")]
 pub async fn update_canvas(
+    _authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
     path: web::Path<String>,
     req: web::Json<UpdateCanvasRequest>,
@@ -208,9 +206,10 @@ pub async fn update_canvas(
     }
 }
 
-/// DELETE /canvas/{id} - Delete canvas
+/// DELETE /canvas/{id} - Delete canvas - REQUIRES AUTHENTICATION
 #[delete("/canvas/{id}")]
 pub async fn delete_canvas(
+    _authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
     path: web::Path<String>,
 ) -> Result<impl Responder> {

@@ -1,5 +1,6 @@
 use crate::services::auth_service_trait::{
     AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, RefreshTokenRequest,
+    SignUpRequest,
 };
 use crate::services::jwt_weviate_auth_service::BasicJWTWeviateAuthService;
 use crate::services::supabase_auth_service::SupabaseAuthService;
@@ -10,7 +11,7 @@ use std::sync::Arc;
 pub use crate::services::jwt_weviate_auth_service::BasicJWTWeviateConfig;
 pub use crate::services::supabase_auth_service::SupabaseConfig;
 
-/// Example usage:
+/// Example usage following the Supabase auth flow:
 ///
 /// ```rust
 /// // Using Supabase
@@ -21,24 +22,22 @@ pub use crate::services::supabase_auth_service::SupabaseConfig;
 /// };
 /// let auth_service = AuthService::with_supabase(supabase_config);
 ///
-/// // Using BasicJWT + Weviate
-/// let jwt_config = BasicJWTWeviateConfig {
-///     jwt_secret: "your-secret-key".to_string(),
-///     weviate_url: "http://localhost:8080".to_string(),
-///     weviate_api_key: "your-weviate-api-key".to_string(),
-///     token_expiry_hours: 24,
-/// };
-/// let auth_service = AuthService::with_basic_jwt_weviate(jwt_config);
-///
-/// // Login user
-/// let login_request = LoginRequest {
+/// // (AuthFlow-email-signup 1) User ->> Frontend: Sign up with email & password
+/// let signup_request = SignUpRequest {
 ///     email: "user@example.com".to_string(),
 ///     password: "password123".to_string(),
+///     name: Some("John Doe".to_string()),
 /// };
-/// let login_response = auth_service.login(login_request).await?;
+/// // (AuthFlow-email-signup 2) Frontend ->> Supabase: supabase.auth.signUp(email, password)
+/// // (AuthFlow-email-signup 3) Supabase -->> User: Email confirmation link (optional)
+/// // (AuthFlow-email-signup 5) Supabase -->> Frontend: JWT tokens (access & refresh)
+/// let signup_response = auth_service.sign_up(signup_request).await?;
 ///
-/// // Verify token
-/// let user = auth_service.verify_token(&login_response.access_token).await?;
+/// // (AuthFlow-email-signup 6) Frontend ->> Backend: Bearer access_token in header
+/// // (AuthFlow-email-signup 7) Backend ->> Supabase: auth.getUser(token)
+/// // (AuthFlow-email-signup 8) Supabase -->> Backend: Valid user data
+/// let user = auth_service.verify_token(&signup_response.access_token).await?;
+/// // (AuthFlow-email-signup 9) Backend -->> Frontend: Protected resource
 /// ```
 
 /// Base AuthService struct that can be configured with different implementations
@@ -68,6 +67,10 @@ impl AuthService {
 
 #[async_trait]
 impl AuthServiceTrait for AuthService {
+    async fn sign_up(&self, request: SignUpRequest) -> Result<LoginResponse, AuthServiceError> {
+        self.implementation.sign_up(request).await
+    }
+
     async fn login(&self, request: LoginRequest) -> Result<LoginResponse, AuthServiceError> {
         self.implementation.login(request).await
     }

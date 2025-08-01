@@ -10,6 +10,7 @@ pub enum AuthServiceError {
     #[error("Token expired")]
     TokenExpired,
     #[error("Unauthorized")]
+    #[allow(dead_code)]
     Unauthorized,
     #[error("User not found")]
     UserNotFound,
@@ -34,11 +35,19 @@ pub struct LoginRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignUpRequest {
+    pub email: String,
+    pub password: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginResponse {
-    pub access_token: String,
+    pub access_token: Option<String>,
     pub refresh_token: Option<String>,
     pub user: AuthUser,
     pub expires_in: u64,
+    pub email_confirmation_pending: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +57,9 @@ pub struct RefreshTokenRequest {
 
 #[async_trait]
 pub trait AuthServiceTrait: Send + Sync {
+    /// Sign up new user with email and password
+    async fn sign_up(&self, request: SignUpRequest) -> Result<LoginResponse, AuthServiceError>;
+
     /// Authenticate user with email and password
     async fn login(&self, request: LoginRequest) -> Result<LoginResponse, AuthServiceError>;
 

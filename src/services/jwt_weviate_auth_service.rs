@@ -1,5 +1,6 @@
 use crate::services::auth_service_trait::{
     AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, RefreshTokenRequest,
+    SignUpRequest,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -149,6 +150,79 @@ impl BasicJWTWeviateAuthService {
 
 #[async_trait]
 impl AuthServiceTrait for BasicJWTWeviateAuthService {
+    async fn sign_up(&self, request: SignUpRequest) -> Result<LoginResponse, AuthServiceError> {
+        // Validate input
+        self.validate_email(&request.email)?;
+        self.validate_password(&request.password)?;
+
+        // Create user in Weviate
+        let user_id = uuid::Uuid::new_v4().to_string();
+        let password_hash = format!("hash:{}", request.password); // Simplified hashing - use bcrypt in production
+
+        let name = request.name.clone().unwrap_or_default();
+        let mutation = serde_json::json!({
+            "query": format!(r#"
+                mutation {{
+                    createUser(input: {{
+                        id: "{}"
+                        email: "{}"
+                        name: "{}"
+                        passwordHash: "{}"
+                        roles: ["user"]
+                    }}) {{
+                        id
+                        email
+                        name
+                        roles
+                    }}
+                }}
+            "#, 
+            user_id,
+            request.email,
+            name,
+            password_hash
+            )
+        });
+
+        let response = self
+            .client
+            .post(&format!("{}/v1/graphql", self.config.weviate_url))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.weviate_api_key),
+            )
+            .header("Content-Type", "application/json")
+            .json(&mutation)
+            .send()
+            .await
+            .map_err(|e| AuthServiceError::ExternalServiceError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(AuthServiceError::ExternalServiceError(
+                "Failed to create user in Weviate".to_string(),
+            ));
+        }
+
+        // Create user object for token generation
+        let user = AuthUser {
+            id: user_id,
+            email: request.email,
+            name: request.name,
+            roles: vec!["user".to_string()],
+        };
+
+        // Create JWT token
+        let access_token = self.create_jwt_token(&user)?;
+
+        Ok(LoginResponse {
+            access_token: Some(access_token),
+            refresh_token: None, // Basic JWT doesn't typically use refresh tokens
+            user,
+            expires_in: self.config.token_expiry_hours * 3600,
+            email_confirmation_pending: Some(false), // JWT auth doesn't require email confirmation
+        })
+    }
+
     async fn login(&self, request: LoginRequest) -> Result<LoginResponse, AuthServiceError> {
         // Validate input
         self.validate_email(&request.email)?;
@@ -163,10 +237,11 @@ impl AuthServiceTrait for BasicJWTWeviateAuthService {
         let access_token = self.create_jwt_token(&user)?;
 
         Ok(LoginResponse {
-            access_token,
+            access_token: Some(access_token),
             refresh_token: None, // Basic JWT doesn't typically use refresh tokens
             user,
             expires_in: self.config.token_expiry_hours * 3600,
+            email_confirmation_pending: Some(false), // JWT auth doesn't require email confirmation
         })
     }
 

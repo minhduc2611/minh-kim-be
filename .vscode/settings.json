@@ -9,5 +9,8 @@
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true
-  }
+  },
+  "rust-analyzer.server.path": "/Users/mac/.cargo/bin/rust-analyzer",
+  "lldb.executable": "/usr/bin/lldb",
+  "lldb.cargo": "/Users/mac/.cargo/bin/cargo"
 }
