@@ -8,13 +8,17 @@ mod middleware;
 mod models;
 mod services;
 
-use controllers::{auth_controller, canvas_controller};
+use controllers::{auth_controller, canvas_controller, email_controller};
 use dao::canvas_dao::CanvasDao;
 use dao::canvas_dao_trait::CanvasRepository;
 use services::auth_service::AuthService;
 use services::auth_service_trait::AuthServiceTrait;
 use services::canvas_service::CanvasService;
 use services::canvas_service_trait::CanvasServiceTrait;
+use services::email_service::EmailService;
+use services::email_service_trait::EmailConfig;
+use services::email_service_trait::EmailServiceTrait;
+use services::dummy_email_service::DummyEmailService;
 use std::sync::Arc;
 
 #[get("/")]
@@ -52,6 +56,22 @@ async fn main() -> std::io::Result<()> {
         },
     ));
 
+    // Set up email service with SMTP
+    let email_service: Arc<dyn EmailServiceTrait> = match EmailService::with_smtp(EmailConfig {
+        smtp_server: std::env::var("SMTP_SERVER").unwrap_or_else(|_| "mail.privateemail.com".to_string()),
+        smtp_port: std::env::var("SMTP_PORT").unwrap_or_else(|_| "587".to_string()).parse().unwrap_or(587),
+        smtp_username: std::env::var("SMTP_USERNAME").unwrap_or_else(|_| "".to_string()),
+        smtp_password: std::env::var("SMTP_PASSWORD").unwrap_or_else(|_| "".to_string()),
+        from_email: std::env::var("FROM_EMAIL").unwrap_or_else(|_| std::env::var("SMTP_USERNAME").unwrap_or_else(|_| "".to_string())),
+        domain_url: std::env::var("DOMAIN_URL").unwrap_or_else(|_| "http://localhost:3000".to_string()),
+    }) {
+        Ok(service) => Arc::new(service),
+        Err(_) => {
+            eprintln!("Warning: Email service not configured. Email functionality will be disabled.");
+            Arc::new(EmailService::new(Arc::new(DummyEmailService {})))
+        }
+    };
+
     println!("Connected to Neo4j database successfully!");
     println!("App is listening at port: http://{}:{}", host, port);
 
@@ -67,6 +87,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(database.clone()))
             .app_data(web::Data::new(canvas_service.clone()))
             .app_data(web::Data::new(auth_service.clone()))
+            .app_data(web::Data::new(email_service.clone()))
             .service(hello)
             // Auth endpoints
             .service(auth_controller::signup)
@@ -75,7 +96,13 @@ async fn main() -> std::io::Result<()> {
             .service(auth_controller::refresh_token)
             .service(auth_controller::logout)
             .service(auth_controller::verify_oauth_token)
+            .service(auth_controller::forgot_password)
+            .service(auth_controller::reset_password)
             // .service(auth_controller::get_user_by_id)
+            // Email endpoints
+            .service(email_controller::send_password_reset_email)
+            .service(email_controller::send_password_reset_confirmation_email)
+            .service(email_controller::send_email_confirmation)
             // Canvas CRUD operations
             .service(canvas_controller::create_canvas)
             .service(canvas_controller::get_canvas_list)

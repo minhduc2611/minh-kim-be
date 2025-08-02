@@ -1,6 +1,6 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, OAuthTokenRequest,
-    RefreshTokenRequest, SignUpRequest,
+    AuthServiceError, AuthServiceTrait, AuthUser, ForgotPasswordRequest, LoginRequest, LoginResponse, OAuthTokenRequest,
+    RefreshTokenRequest, ResetPasswordRequest, SignUpRequest,
 };
 use crate::services::jwt_weviate_auth_service::BasicJWTWeviateAuthService;
 use crate::services::supabase_auth_service::SupabaseAuthService;
@@ -104,5 +104,13 @@ impl AuthServiceTrait for AuthService {
 
     fn validate_password(&self, password: &str) -> Result<(), AuthServiceError> {
         self.implementation.validate_password(password)
+    }
+
+    async fn forgot_password(&self, request: ForgotPasswordRequest) -> Result<(), AuthServiceError> {
+        self.implementation.forgot_password(request).await
+    }
+
+    async fn reset_password(&self, request: ResetPasswordRequest, token: &str) -> Result<(), AuthServiceError> {
+        self.implementation.reset_password(request, token).await
     }
 }

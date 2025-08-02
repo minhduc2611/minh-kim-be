@@ -25,6 +25,19 @@ pub struct AuthUser {
     pub id: String,
     pub email: String,
     pub name: Option<String>,
+    pub full_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub email_verified: Option<bool>,
+    pub phone: Option<String>,
+    pub phone_verified: Option<bool>,
+    pub role: Option<String>,
+    pub providers: Vec<String>,
+    pub last_sign_in_at: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub confirmed_at: Option<String>,
+    pub email_confirmed_at: Option<String>,
+    pub is_anonymous: Option<bool>,
     pub roles: Vec<String>,
 }
 
@@ -67,6 +80,16 @@ pub struct OAuthCallbackRequest {
     pub state: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub password: String,
+}
+
 #[async_trait]
 pub trait AuthServiceTrait: Send + Sync {
     /// Sign up new user with email and password
@@ -99,4 +122,10 @@ pub trait AuthServiceTrait: Send + Sync {
 
     /// Validate password strength
     fn validate_password(&self, password: &str) -> Result<(), AuthServiceError>;
+
+    /// Send password reset email
+    async fn forgot_password(&self, request: ForgotPasswordRequest) -> Result<(), AuthServiceError>;
+
+    /// Reset password with token
+    async fn reset_password(&self, request: ResetPasswordRequest, token: &str) -> Result<(), AuthServiceError>;
 }

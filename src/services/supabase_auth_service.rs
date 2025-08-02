@@ -1,6 +1,6 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, OAuthTokenRequest,
-    RefreshTokenRequest, SignUpRequest,
+    AuthServiceError, AuthServiceTrait, AuthUser, ForgotPasswordRequest, LoginRequest, LoginResponse, OAuthTokenRequest,
+    RefreshTokenRequest, ResetPasswordRequest, SignUpRequest,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -22,6 +22,42 @@ impl SupabaseAuthService {
         Self {
             config,
             client: reqwest::Client::new(),
+        }
+    }
+
+    /// Helper function to extract comprehensive user data from Supabase user object
+    fn extract_user_data(&self, user_data: &serde_json::Value) -> AuthUser {
+        // Extract providers from app_metadata
+        let providers = user_data["app_metadata"]["providers"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        
+        // Extract user metadata
+        let user_metadata = &user_data["user_metadata"];
+        
+        AuthUser {
+            id: user_data["id"].as_str().unwrap_or_default().to_string(),
+            email: user_data["email"].as_str().unwrap_or_default().to_string(),
+            name: user_metadata["name"].as_str().map(|s| s.to_string()),
+            full_name: user_metadata["full_name"].as_str().map(|s| s.to_string()),
+            avatar_url: user_metadata["avatar_url"].as_str().map(|s| s.to_string()),
+            email_verified: user_metadata["email_verified"].as_bool(),
+            phone: user_data["phone"].as_str().map(|s| s.to_string()),
+            phone_verified: user_metadata["phone_verified"].as_bool(),
+            role: user_data["role"].as_str().map(|s| s.to_string()),
+            providers,
+            last_sign_in_at: user_data["last_sign_in_at"].as_str().map(|s| s.to_string()),
+            created_at: user_data["created_at"].as_str().map(|s| s.to_string()),
+            updated_at: user_data["updated_at"].as_str().map(|s| s.to_string()),
+            confirmed_at: user_data["confirmed_at"].as_str().map(|s| s.to_string()),
+            email_confirmed_at: user_data["email_confirmed_at"].as_str().map(|s| s.to_string()),
+            is_anonymous: user_data["is_anonymous"].as_bool(),
+            roles: vec!["user".to_string()], // Default role
         }
     }
 }
@@ -92,14 +128,7 @@ impl AuthServiceTrait for SupabaseAuthService {
             &auth_response["user"]
         };
 
-        let user = AuthUser {
-            id: user_data["id"].as_str().unwrap_or_default().to_string(),
-            email: user_data["email"].as_str().unwrap_or_default().to_string(),
-            name: user_data["user_metadata"]["name"]
-                .as_str()
-                .map(|s| s.to_string()),
-            roles: vec!["user".to_string()], // Default role
-        };
+        let user = self.extract_user_data(user_data);
 
         // (AuthFlow-email-signup 5) Supabase -->> Frontend: JWT tokens (access & refresh) or confirmation pending
         Ok(LoginResponse {
@@ -155,14 +184,8 @@ impl AuthServiceTrait for SupabaseAuthService {
             .to_string();
 
         let user_data = &auth_response["user"];
-        let user = AuthUser {
-            id: user_data["id"].as_str().unwrap_or_default().to_string(),
-            email: user_data["email"].as_str().unwrap_or_default().to_string(),
-            name: user_data["user_metadata"]["name"]
-                .as_str()
-                .map(|s| s.to_string()),
-            roles: vec!["user".to_string()], // Default role
-        };
+        
+        let user = self.extract_user_data(user_data);
 
         // (AuthFlow-email-login 5) Supabase -->> Frontend: JWT tokens (access & refresh)
         Ok(LoginResponse {
@@ -208,14 +231,8 @@ impl AuthServiceTrait for SupabaseAuthService {
             .map_err(|e| AuthServiceError::ExternalServiceError(e.to_string()))?;
 
         // (AuthFlow-email-signup 8) Supabase -->> Backend: Valid user data
-        Ok(AuthUser {
-            id: user_data["id"].as_str().unwrap_or_default().to_string(),
-            email: user_data["email"].as_str().unwrap_or_default().to_string(),
-            name: user_data["user_metadata"]["name"]
-                .as_str()
-                .map(|s| s.to_string()),
-            roles: vec!["user".to_string()],
-        })
+        
+        Ok(self.extract_user_data(&user_data))
     }
 
     async fn refresh_token(
@@ -257,14 +274,8 @@ impl AuthServiceTrait for SupabaseAuthService {
             .to_string();
 
         let user_data = &auth_response["user"];
-        let user = AuthUser {
-            id: user_data["id"].as_str().unwrap_or_default().to_string(),
-            email: user_data["email"].as_str().unwrap_or_default().to_string(),
-            name: user_data["user_metadata"]["name"]
-                .as_str()
-                .map(|s| s.to_string()),
-            roles: vec!["user".to_string()],
-        };
+        
+        let user = self.extract_user_data(user_data);
 
         // Return new JWT tokens (access & refresh)
         Ok(LoginResponse {
@@ -305,14 +316,7 @@ impl AuthServiceTrait for SupabaseAuthService {
 
         let user_data = users.first().ok_or(AuthServiceError::UserNotFound)?;
 
-        Ok(AuthUser {
-            id: user_data["id"].as_str().unwrap_or_default().to_string(),
-            email: user_data["email"].as_str().unwrap_or_default().to_string(),
-            name: user_data["user_metadata"]["name"]
-                .as_str()
-                .map(|s| s.to_string()),
-            roles: vec!["user".to_string()],
-        })
+        Ok(self.extract_user_data(&user_data))
     }
 
     async fn logout(&self, _token: &str) -> Result<(), AuthServiceError> {
@@ -358,6 +362,61 @@ impl AuthServiceTrait for SupabaseAuthService {
                 "Password must be at least 8 characters".to_string(),
             ));
         }
+        Ok(())
+    }
+
+    async fn forgot_password(&self, request: ForgotPasswordRequest) -> Result<(), AuthServiceError> {
+        // Validate email format
+        self.validate_email(&request.email)?;
+
+        // Make request to Supabase Auth API for password reset
+        let url = format!("{}/auth/v1/recover", self.config.url);
+
+        let response = self
+            .client
+            .post(&url)
+            .header("apikey", &self.config.anon_key)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "email": request.email,
+            }))
+            .send()
+            .await
+            .map_err(|e| AuthServiceError::ExternalServiceError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(AuthServiceError::ExternalServiceError(error_text));
+        }
+
+        Ok(())
+    }
+
+    async fn reset_password(&self, request: ResetPasswordRequest, token: &str) -> Result<(), AuthServiceError> {
+        // Validate password
+        self.validate_password(&request.password)?;
+
+        // Make request to Supabase Auth API for password update
+        let url = format!("{}/auth/v1/user", self.config.url);
+
+        let response = self
+            .client
+            .put(&url)
+            .header("apikey", &self.config.anon_key)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "password": request.password
+            }))
+            .send()
+            .await
+            .map_err(|e| AuthServiceError::ExternalServiceError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(AuthServiceError::ExternalServiceError(error_text));
+        }
+
         Ok(())
     }
 }

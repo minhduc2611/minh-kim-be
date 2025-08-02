@@ -22,3 +22,4 @@ regex = "1.0"
 base64 = "0.21"
 hmac = "0.12"
 sha2 = "0.10"
+lettre = { version = "0.10", features = ["tokio1", "tokio1-native-tls"] }

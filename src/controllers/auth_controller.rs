@@ -1,5 +1,5 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, LoginRequest, OAuthTokenRequest, RefreshTokenRequest, SignUpRequest,
+    AuthServiceError, AuthServiceTrait, ForgotPasswordRequest, LoginRequest, OAuthTokenRequest, RefreshTokenRequest, ResetPasswordRequest, SignUpRequest,
 };
 use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder, Result};
 use serde::{Deserialize, Serialize};
@@ -356,6 +356,150 @@ pub async fn verify_oauth_token(
                 success: false,
                 data: None,
                 message: Some("Internal server error".to_string()),
+                error: Some(format!("ExternalServiceError: {}", msg)),
+            })),
+        Err(err) => Ok(
+            HttpResponse::InternalServerError().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Internal server error".to_string()),
+                error: Some(format!("{:?}", err)),
+            }),
+        ),
+    }
+}
+
+/// POST /auth/forgot-password - Send password reset email
+#[post("/auth/forgot-password")]
+pub async fn forgot_password(
+    service: web::Data<Arc<dyn AuthServiceTrait>>,
+    request: web::Json<ForgotPasswordRequest>,
+) -> Result<impl Responder> {
+    match service.forgot_password(request.into_inner()).await {
+        Ok(()) => Ok(HttpResponse::Ok().json(AuthResponse::<()> {
+            success: true,
+            data: None,
+            message: Some("Password reset email sent successfully. Please check your email.".to_string()),
+            error: None,
+        })),
+        Err(AuthServiceError::ValidationError(msg)) => {
+            Ok(HttpResponse::BadRequest().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some(msg),
+                error: Some("ValidationError".to_string()),
+            }))
+        }
+        Err(AuthServiceError::ExternalServiceError(msg)) => Ok(HttpResponse::InternalServerError()
+            .json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Failed to send password reset email".to_string()),
+                error: Some(format!("ExternalServiceError: {}", msg)),
+            })),
+        Err(err) => Ok(
+            HttpResponse::InternalServerError().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Internal server error".to_string()),
+                error: Some(format!("{:?}", err)),
+            }),
+        ),
+    }
+}
+
+/// POST /auth/reset-password - Reset password with token (requires authentication)
+#[post("/auth/reset-password")]
+pub async fn reset_password(
+    service: web::Data<Arc<dyn AuthServiceTrait>>,
+    request: web::Json<ResetPasswordRequest>,
+    req: HttpRequest,
+) -> Result<impl Responder> {
+    // Extract Bearer token from Authorization header
+    let auth_header = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "));
+
+    let token = match auth_header {
+        Some(token) => token,
+        None => {
+            return Ok(HttpResponse::Unauthorized().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Missing or invalid Authorization header".to_string()),
+                error: Some("MissingToken".to_string()),
+            }));
+        }
+    };
+
+    // Verify the user is authenticated
+    let _user = match service.verify_token(token).await {
+        Ok(user) => user,
+        Err(AuthServiceError::InvalidToken(msg)) => {
+            return Ok(HttpResponse::Unauthorized().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some(msg),
+                error: Some("InvalidToken".to_string()),
+            }));
+        }
+        Err(AuthServiceError::TokenExpired) => {
+            return Ok(HttpResponse::Unauthorized().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Token has expired".to_string()),
+                error: Some("TokenExpired".to_string()),
+            }));
+        }
+        Err(AuthServiceError::ExternalServiceError(msg)) => {
+            return Ok(HttpResponse::InternalServerError().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Internal server error".to_string()),
+                error: Some(format!("ExternalServiceError: {}", msg)),
+            }));
+        }
+        Err(err) => {
+            return Ok(HttpResponse::InternalServerError().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Internal server error".to_string()),
+                error: Some(format!("{:?}", err)),
+            }));
+        }
+    };
+
+
+    match service.reset_password(request.into_inner(), token).await {
+        Ok(()) => Ok(HttpResponse::Ok().json(AuthResponse::<()> {
+            success: true,
+            data: None,
+            message: Some("Password reset successfully".to_string()),
+            error: None,
+        })),
+        Err(AuthServiceError::ValidationError(msg)) => {
+            Ok(HttpResponse::BadRequest().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some(msg),
+                error: Some("ValidationError".to_string()),
+            }))
+        }
+        Err(AuthServiceError::InvalidToken(msg)) => {
+            Ok(HttpResponse::Unauthorized().json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some(msg),
+                error: Some("InvalidToken".to_string()),
+            }))
+        }
+        Err(AuthServiceError::ExternalServiceError(msg)) => Ok(HttpResponse::InternalServerError()
+            .json(AuthResponse::<()> {
+                success: false,
+                data: None,
+                message: Some("Failed to reset password".to_string()),
                 error: Some(format!("ExternalServiceError: {}", msg)),
             })),
         Err(err) => Ok(

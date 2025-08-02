@@ -1,6 +1,6 @@
 use crate::services::auth_service_trait::{
-    AuthServiceError, AuthServiceTrait, AuthUser, LoginRequest, LoginResponse, OAuthTokenRequest,
-    RefreshTokenRequest, SignUpRequest,
+    AuthServiceError, AuthServiceTrait, AuthUser, ForgotPasswordRequest, LoginRequest, LoginResponse, OAuthTokenRequest,
+    RefreshTokenRequest, ResetPasswordRequest, SignUpRequest,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -37,6 +37,19 @@ impl BasicJWTWeviateAuthService {
             "sub": user.id,
             "email": user.email,
             "name": user.name,
+            "fullName": user.full_name,
+            "avatarUrl": user.avatar_url,
+            "emailVerified": user.email_verified,
+            "phone": user.phone,
+            "phoneVerified": user.phone_verified,
+            "role": user.role,
+            "providers": user.providers,
+            "lastSignInAt": user.last_sign_in_at,
+            "createdAt": user.created_at,
+            "updatedAt": user.updated_at,
+            "confirmedAt": user.confirmed_at,
+            "emailConfirmedAt": user.email_confirmed_at,
+            "isAnonymous": user.is_anonymous,
             "roles": user.roles,
             "exp": chrono::Utc::now().timestamp() + (self.config.token_expiry_hours as i64 * 3600)
         })).map_err(|e| AuthServiceError::ExternalServiceError(e.to_string()))?);
@@ -130,6 +143,19 @@ impl BasicJWTWeviateAuthService {
             id: user_data["id"].as_str().unwrap_or_default().to_string(),
             email: user_data["email"].as_str().unwrap_or_default().to_string(),
             name: user_data["name"].as_str().map(|s| s.to_string()),
+            full_name: user_data["fullName"].as_str().map(|s| s.to_string()),
+            avatar_url: user_data["avatarUrl"].as_str().map(|s| s.to_string()),
+            email_verified: user_data["emailVerified"].as_bool(),
+            phone: user_data["phone"].as_str().map(|s| s.to_string()),
+            phone_verified: user_data["phoneVerified"].as_bool(),
+            role: user_data["role"].as_str().map(|s| s.to_string()),
+            providers: vec!["email".to_string()], // Default for basic auth
+            last_sign_in_at: user_data["lastSignInAt"].as_str().map(|s| s.to_string()),
+            created_at: user_data["createdAt"].as_str().map(|s| s.to_string()),
+            updated_at: user_data["updatedAt"].as_str().map(|s| s.to_string()),
+            confirmed_at: user_data["confirmedAt"].as_str().map(|s| s.to_string()),
+            email_confirmed_at: user_data["emailConfirmedAt"].as_str().map(|s| s.to_string()),
+            is_anonymous: Some(false), // Basic auth users are never anonymous
             roles: user_data["roles"]
                 .as_array()
                 .map(|arr| {
@@ -207,7 +233,20 @@ impl AuthServiceTrait for BasicJWTWeviateAuthService {
         let user = AuthUser {
             id: user_id,
             email: request.email,
-            name: request.name,
+            name: request.name.clone(),
+            full_name: request.name,
+            avatar_url: None,
+            email_verified: Some(false), // New users need email verification
+            phone: None,
+            phone_verified: Some(false),
+            role: Some("authenticated".to_string()),
+            providers: vec!["email".to_string()],
+            last_sign_in_at: Some(chrono::Utc::now().to_rfc3339()),
+            created_at: Some(chrono::Utc::now().to_rfc3339()),
+            updated_at: Some(chrono::Utc::now().to_rfc3339()),
+            confirmed_at: None, // Not confirmed until email verification
+            email_confirmed_at: None,
+            is_anonymous: Some(false),
             roles: vec!["user".to_string()],
         };
 
@@ -285,6 +324,26 @@ impl AuthServiceTrait for BasicJWTWeviateAuthService {
             id: payload["sub"].as_str().unwrap_or_default().to_string(),
             email: payload["email"].as_str().unwrap_or_default().to_string(),
             name: payload["name"].as_str().map(|s| s.to_string()),
+            full_name: payload["fullName"].as_str().map(|s| s.to_string()),
+            avatar_url: payload["avatarUrl"].as_str().map(|s| s.to_string()),
+            email_verified: payload["emailVerified"].as_bool(),
+            phone: payload["phone"].as_str().map(|s| s.to_string()),
+            phone_verified: payload["phoneVerified"].as_bool(),
+            role: payload["role"].as_str().map(|s| s.to_string()),
+            providers: payload["providers"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_else(|| vec!["email".to_string()]),
+            last_sign_in_at: payload["lastSignInAt"].as_str().map(|s| s.to_string()),
+            created_at: payload["createdAt"].as_str().map(|s| s.to_string()),
+            updated_at: payload["updatedAt"].as_str().map(|s| s.to_string()),
+            confirmed_at: payload["confirmedAt"].as_str().map(|s| s.to_string()),
+            email_confirmed_at: payload["emailConfirmedAt"].as_str().map(|s| s.to_string()),
+            is_anonymous: payload["isAnonymous"].as_bool(),
             roles: payload["roles"]
                 .as_array()
                 .map(|arr| {
@@ -361,6 +420,19 @@ impl AuthServiceTrait for BasicJWTWeviateAuthService {
             id: user_data["id"].as_str().unwrap_or_default().to_string(),
             email: user_data["email"].as_str().unwrap_or_default().to_string(),
             name: user_data["name"].as_str().map(|s| s.to_string()),
+            full_name: user_data["fullName"].as_str().map(|s| s.to_string()),
+            avatar_url: user_data["avatarUrl"].as_str().map(|s| s.to_string()),
+            email_verified: user_data["emailVerified"].as_bool(),
+            phone: user_data["phone"].as_str().map(|s| s.to_string()),
+            phone_verified: user_data["phoneVerified"].as_bool(),
+            role: user_data["role"].as_str().map(|s| s.to_string()),
+            providers: vec!["email".to_string()], // Default for basic auth
+            last_sign_in_at: user_data["lastSignInAt"].as_str().map(|s| s.to_string()),
+            created_at: user_data["createdAt"].as_str().map(|s| s.to_string()),
+            updated_at: user_data["updatedAt"].as_str().map(|s| s.to_string()),
+            confirmed_at: user_data["confirmedAt"].as_str().map(|s| s.to_string()),
+            email_confirmed_at: user_data["emailConfirmedAt"].as_str().map(|s| s.to_string()),
+            is_anonymous: Some(false), // Basic auth users are never anonymous
             roles: user_data["roles"]
                 .as_array()
                 .map(|arr| {
@@ -407,5 +479,37 @@ impl AuthServiceTrait for BasicJWTWeviateAuthService {
             ));
         }
         Ok(())
+    }
+
+    async fn forgot_password(&self, request: ForgotPasswordRequest) -> Result<(), AuthServiceError> {
+        // For JWT-based auth service, password reset would need email service integration
+        // This is a placeholder implementation - in production you'd:
+        // 1. Generate a password reset token
+        // 2. Store it in Weviate with expiration
+        // 3. Send email with reset link
+        // 4. Verify token when user resets password
+        
+        // Validate email format
+        self.validate_email(&request.email)?;
+        
+        // For now, just return success (placeholder)
+        // In production, implement actual password reset flow
+        Err(AuthServiceError::ExternalServiceError(
+            "Password reset not implemented for JWT auth service. Use Supabase auth service for password reset functionality.".to_string()
+        ))
+    }
+
+    async fn reset_password(&self, request: ResetPasswordRequest, _token: &str) -> Result<(), AuthServiceError> {
+        // For JWT-based auth service, password reset would need email service integration
+        // This is a placeholder implementation
+        
+        // Validate password
+        self.validate_password(&request.password)?;
+        
+        // For now, just return success (placeholder)
+        // In production, implement actual password reset flow
+        Err(AuthServiceError::ExternalServiceError(
+            "Password reset not implemented for JWT auth service. Use Supabase auth service for password reset functionality.".to_string()
+        ))
     }
 }
