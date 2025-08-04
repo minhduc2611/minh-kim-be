@@ -19,8 +19,8 @@ pub struct GraphNode {
     pub node_type: String, // "original" or "generated"
     pub description: Option<String>,
     pub knowledge: Option<String>,
-    pub position_x: f64,
-    pub position_y: f64,
+    pub position_x: Option<f64>,
+    pub position_y: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,0 +1,372 @@
+use crate::dao::node_dao_trait::{NodeRepository, NodeRepositoryError};
+use crate::database::Database;
+use crate::models::node::{GetNodesRequest, InsertNode, UpdateNodeRequest};
+use crate::models::canvas::GraphNode;
+use crate::models::common::PaginatedResponse;
+use async_trait::async_trait;
+use neo4rs::query;
+use std::collections::HashMap;
+
+pub struct NodeDao {
+    database: Database,
+}
+
+impl NodeDao {
+    pub fn new(database: Database) -> Self {
+        Self { database }
+    }
+}
+
+#[async_trait]
+impl NodeRepository for NodeDao {
+    async fn create_node(
+        &self,
+        insert_node: InsertNode,
+    ) -> Result<GraphNode, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (c:Canvas {id: $canvas_id})
+             CREATE (n:Node {
+                 id: $id,
+                 canvasId: $canvas_id,
+                 name: $name,
+                 type: $type,
+                 description: $description,
+                 knowledge: $knowledge,
+                 positionX: $position_x,
+                 positionY: $position_y,
+                 createdAt: datetime()
+             })
+             CREATE (c)-[:CONTAINS]->(n)
+             RETURN n",
+        )
+        .param("id", insert_node.id.clone())
+        .param("canvas_id", insert_node.canvas_id.clone())
+        .param("name", insert_node.name.clone())
+        .param("type", insert_node.node_type.clone())
+        .param("description", insert_node.description.clone().unwrap_or_default())
+        .param("knowledge", insert_node.knowledge.clone().unwrap_or_default())
+        .param("position_x", insert_node.position_x.unwrap_or(0.0))
+        .param("position_y", insert_node.position_y.unwrap_or(0.0));
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("n")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Self::node_to_graph_node(node)
+        } else {
+            Err(NodeRepositoryError::DatabaseError(
+                "Failed to create node".to_string(),
+            ))
+        }
+    }
+
+    async fn get_node_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query("MATCH (n:Node {id: $id}) RETURN n")
+            .param("id", id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("n")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Ok(Some(Self::node_to_graph_node(node)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn get_nodes(
+        &self,
+        request: GetNodesRequest,
+    ) -> Result<PaginatedResponse<GraphNode>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let limit = request.limit.unwrap_or(50);
+        let offset = request.offset.unwrap_or(0);
+
+        // First query: Get total count
+        let count_cypher = query(
+            "MATCH (n:Node {canvasId: $canvas_id})
+             RETURN count(n) as total",
+        )
+        .param("canvas_id", request.canvas_id.clone());
+
+        let mut count_result = graph
+            .execute(count_cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        let total = if let Some(row) = count_result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            row.get::<i64>("total")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?
+        } else {
+            0
+        };
+
+        // Second query: Get paginated data
+        let data_cypher = query(
+            "MATCH (n:Node {canvasId: $canvas_id})
+             RETURN n
+             ORDER BY n.createdAt ASC
+             SKIP $offset
+             LIMIT $limit",
+        )
+        .param("canvas_id", request.canvas_id)
+        .param("offset", offset)
+        .param("limit", limit);
+
+        let mut data_result = graph
+            .execute(data_cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        let mut nodes = Vec::new();
+        while let Some(row) = data_result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("n")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            nodes.push(Self::node_to_graph_node(node)?);
+        }
+
+        Ok(PaginatedResponse::new(nodes, total, limit, offset))
+    }
+
+    async fn get_nodes_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (n:Node {canvasId: $canvas_id})
+             RETURN n
+             ORDER BY n.createdAt ASC",
+        )
+        .param("canvas_id", canvas_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        let mut nodes = Vec::new();
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("n")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            nodes.push(Self::node_to_graph_node(node)?);
+        }
+
+        Ok(nodes)
+    }
+
+    async fn update_node(
+        &self,
+        id: &str,
+        updates: UpdateNodeRequest,
+    ) -> Result<Option<GraphNode>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let mut set_clauses = Vec::new();
+        let mut params: HashMap<String, neo4rs::BoltType> = HashMap::new();
+        params.insert("id".to_string(), id.into());
+
+        if let Some(name) = &updates.name {
+            set_clauses.push("n.name = $name");
+            params.insert("name".to_string(), name.clone().into());
+        }
+
+        if let Some(node_type) = &updates.node_type {
+            set_clauses.push("n.type = $type");
+            params.insert("type".to_string(), node_type.clone().into());
+        }
+
+        if let Some(description) = &updates.description {
+            set_clauses.push("n.description = $description");
+            params.insert("description".to_string(), description.clone().into());
+        }
+
+        if let Some(knowledge) = &updates.knowledge {
+            set_clauses.push("n.knowledge = $knowledge");
+            params.insert("knowledge".to_string(), knowledge.clone().into());
+        }
+
+        if let Some(position_x) = updates.position_x {
+            set_clauses.push("n.positionX = $position_x");
+            params.insert("position_x".to_string(), position_x.into());
+        }
+
+        if let Some(position_y) = updates.position_y {
+            set_clauses.push("n.positionY = $position_y");
+            params.insert("position_y".to_string(), position_y.into());
+        }
+
+        if set_clauses.is_empty() {
+            return self.get_node_by_id(id).await;
+        }
+
+        let cypher_str = format!(
+            "MATCH (n:Node {{id: $id}})
+             SET {}
+             RETURN n",
+            set_clauses.join(", ")
+        );
+
+        let mut cypher = query(&cypher_str);
+        for (key, value) in params {
+            cypher = cypher.param(&key, value);
+        }
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("n")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Ok(Some(Self::node_to_graph_node(node)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn delete_node(&self, id: &str) -> Result<(), NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (n:Node {id: $id}) 
+             DETACH DELETE n 
+             RETURN count(n) as deleted_count",
+        )
+        .param("id", id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let deleted_count = row
+                .get::<i64>("deleted_count")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            if deleted_count == 0 {
+                return Err(NodeRepositoryError::NotFound);
+            }
+
+            Ok(())
+        } else {
+            Err(NodeRepositoryError::DatabaseError(
+                "Failed to execute delete query".to_string(),
+            ))
+        }
+    }
+
+    async fn delete_nodes_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (n:Node {canvasId: $canvas_id}) 
+             DETACH DELETE n 
+             RETURN count(n) as deleted_count",
+        )
+        .param("canvas_id", canvas_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let _deleted_count = row
+                .get::<i64>("deleted_count")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Ok(())
+        } else {
+            Err(NodeRepositoryError::DatabaseError(
+                "Failed to execute delete query".to_string(),
+            ))
+        }
+    }
+}
+
+impl NodeDao {
+    fn node_to_graph_node(node: neo4rs::Node) -> Result<GraphNode, NodeRepositoryError> {
+        let id = node
+            .get::<String>("id")
+            .map_err(|e| NodeRepositoryError::InvalidData(format!("id: {}", e)))?;
+
+        let name = node
+            .get::<String>("name")
+            .map_err(|e| NodeRepositoryError::InvalidData(format!("name: {}", e)))?;
+
+        let node_type = node
+            .get::<String>("type")
+            .unwrap_or_else(|_| "original".to_string());
+
+        let description = node.get::<String>("description").ok();
+        let knowledge = node.get::<String>("knowledge").ok();
+        let position_x = node.get::<f64>("positionX").ok();
+        let position_y = node.get::<f64>("positionY").ok();
+
+        Ok(GraphNode {
+            id,
+            name,
+            node_type,
+            description,
+            knowledge,
+            position_x,
+            position_y,
+        })
+    }
+} 

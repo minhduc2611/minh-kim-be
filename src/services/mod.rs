@@ -8,3 +8,5 @@ pub mod smtp_email_service;
 pub mod dummy_email_service;
 pub mod jwt_weviate_auth_service;
 pub mod supabase_auth_service;
+pub mod node_service;
+pub mod node_service_trait;

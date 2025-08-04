@@ -277,11 +277,9 @@ impl CanvasRepository for CanvasDao {
 
         // Query to get all Topic nodes that belong to the specified canvas
         let cypher = query(
-            "MATCH (c:Canvas {id: $canvas_id})-[:BELONGS_TO]->(t:Topic)
-             RETURN t",
+            "MATCH (t:Topic {canvasId: $canvas_id}) RETURN t ORDER BY t.createdAt ASC",
         )
         .param("canvas_id", canvas_id);
-
         let mut result = graph
             .execute(cypher)
             .await
@@ -307,13 +305,13 @@ impl CanvasRepository for CanvasDao {
         let graph = self.database.get_graph();
 
         // Query to get all relationships between topics that belong to the specified canvas
-        // Instead of trying to get the relationship object, we'll get the relationship properties
+        // Return the relationship properties and node IDs
         let cypher = query(
-            "MATCH (c:Canvas {id: $canvas_id})-[:BELONGS_TO]->(t1:Topic)-[r:RELATES_TO]->(t2:Topic)<-[:BELONGS_TO]-(c)
-             RETURN t1.id as source_id, t2.id as target_id, r.id as relationship_id",
+            "MATCH (source)-[r:RELATED_TO {canvasId: $canvas_id}]->(target) 
+             RETURN source.id as sourceId, target.id as targetId, r.id as id",
         )
         .param("canvas_id", canvas_id);
-
+        // print query
         let mut result = graph
             .execute(cypher)
             .await
@@ -326,17 +324,14 @@ impl CanvasRepository for CanvasDao {
             .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
         {
             let source_id = row
-                .get::<String>("source_id")
+                .get::<String>("sourceId")
                 .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
-
             let target_id = row
-                .get::<String>("target_id")
+                .get::<String>("targetId")
                 .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
-
             let relationship_id = row
-                .get::<String>("relationship_id")
+                .get::<String>("id")
                 .unwrap_or_else(|_| format!("{}-{}", source_id, target_id));
-
             relationships.push(GraphEdge {
                 id: relationship_id,
                 source: source_id,
@@ -399,13 +394,13 @@ impl CanvasDao {
 
         let knowledge = node.get::<String>("knowledge").ok();
 
-        let position_x = node
-            .get::<f64>("positionX")
-            .unwrap_or(0.0);
+        // let position_x = node
+        //     .get::<f64>("positionX")
+        //     .unwrap_or(0.0);
 
-        let position_y = node
-            .get::<f64>("positionY")
-            .unwrap_or(0.0);
+        // let position_y = node
+        //     .get::<f64>("positionY")
+        //     .unwrap_or(0.0);
 
         Ok(GraphNode {
             id,
@@ -413,8 +408,8 @@ impl CanvasDao {
             node_type,
             description,
             knowledge,
-            position_x,
-            position_y,
+            position_x: None,
+            position_y: None,
         })
     }
 

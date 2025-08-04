@@ -63,3 +63,10 @@ pub struct ListCanvasQuery {
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
+
+#[derive(Deserialize)]
+pub struct ListNodeQuery {
+    pub canvas_id: String,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}

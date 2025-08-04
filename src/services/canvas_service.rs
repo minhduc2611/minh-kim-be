@@ -119,12 +119,12 @@ impl CanvasServiceTrait for CanvasService {
             .get_topics_by_canvas(canvas_id)
             .await
             .map_err(Self::map_repository_error)?;
-
+        println!("topics: Done, length: {}", topics.len());
         let relationships = self.repository
             .get_relationships_by_canvas(canvas_id)
             .await
             .map_err(Self::map_repository_error)?;
-
+        println!("relationships: Done, length: {}", relationships.len());
         Ok(GraphData {
             nodes: topics,
             edges: relationships,

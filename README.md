@@ -32,3 +32,8 @@ rustup update
 ```bash
 cargo run
 ```
+
+## terminate port
+```
+lsof -ti:8080 | xargs kill -9
+```

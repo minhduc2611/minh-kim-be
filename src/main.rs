@@ -8,13 +8,17 @@ mod middleware;
 mod models;
 mod services;
 
-use controllers::{auth_controller, canvas_controller, email_controller};
+use controllers::{auth_controller, canvas_controller, email_controller, node_controller};
 use dao::canvas_dao::CanvasDao;
 use dao::canvas_dao_trait::CanvasRepository;
+use dao::node_dao::NodeDao;
+use dao::node_dao_trait::NodeRepository;
 use services::auth_service::AuthService;
 use services::auth_service_trait::AuthServiceTrait;
 use services::canvas_service::CanvasService;
 use services::canvas_service_trait::CanvasServiceTrait;
+use services::node_service::NodeService;
+use services::node_service_trait::NodeServiceTrait;
 use services::email_service::EmailService;
 use services::email_service_trait::EmailConfig;
 use services::email_service_trait::EmailServiceTrait;
@@ -81,6 +85,10 @@ async fn main() -> std::io::Result<()> {
     let canvas_service: Arc<dyn CanvasServiceTrait> =
         Arc::new(CanvasService::new(canvas_repository));
 
+    let node_repository: Arc<dyn NodeRepository> = Arc::new(NodeDao::new(database.clone()));
+    let node_service: Arc<dyn NodeServiceTrait> =
+        Arc::new(NodeService::new(node_repository));
+
     // Set up auth service with Supabase (you can change to JWT+Weviate if needed)
     let auth_service: Arc<dyn AuthServiceTrait> = Arc::new(AuthService::with_supabase(
         services::auth_service::SupabaseConfig {
@@ -123,6 +131,7 @@ async fn main() -> std::io::Result<()> {
             )
             .app_data(web::Data::new(database.clone()))
             .app_data(web::Data::new(canvas_service.clone()))
+            .app_data(web::Data::new(node_service.clone()))
             .app_data(web::Data::new(auth_service.clone()))
             .app_data(web::Data::new(email_service.clone()))
             .service(hello)
@@ -147,6 +156,14 @@ async fn main() -> std::io::Result<()> {
             .service(canvas_controller::update_canvas)
             .service(canvas_controller::delete_canvas)
             .service(canvas_controller::get_canvas_graph_data)
+            // Node CRUD operations
+            .service(node_controller::create_node)
+            .service(node_controller::get_node_list)
+            .service(node_controller::get_node)
+            .service(node_controller::update_node)
+            .service(node_controller::delete_node)
+            .service(node_controller::get_nodes_by_canvas)
+            .service(node_controller::delete_nodes_by_canvas)
     })
     .bind((host, port))?
     .run()
