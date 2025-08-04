@@ -1,4 +1,4 @@
-use crate::models::canvas::{Canvas, GetCanvasesRequest, InsertCanvas, UpdateCanvasRequest};
+use crate::models::canvas::{Canvas, GetCanvasesRequest, InsertCanvas, UpdateCanvasRequest, GraphNode, GraphEdge};
 use crate::models::common::PaginatedResponse;
 use async_trait::async_trait;
 
@@ -34,4 +34,9 @@ pub trait CanvasRepository: Send + Sync {
     ) -> Result<Option<Canvas>, CanvasRepositoryError>;
 
     async fn delete_canvas(&self, id: &str) -> Result<(), CanvasRepositoryError>;
+
+    // New methods for graph data
+    async fn get_topics_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, CanvasRepositoryError>;
+    
+    async fn get_relationships_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphEdge>, CanvasRepositoryError>;
 }

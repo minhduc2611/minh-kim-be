@@ -26,6 +26,43 @@ async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::canvas::{GraphNode, GraphEdge, GraphData};
+
+    #[test]
+    fn test_graph_data_structure() {
+        // Test that GraphData can be created and serialized
+        let nodes = vec![
+            GraphNode {
+                id: "node1".to_string(),
+                name: "Test Node".to_string(),
+                node_type: "original".to_string(),
+                description: Some("Test description".to_string()),
+                knowledge: None,
+                position_x: 100.0,
+                position_y: 200.0,
+            }
+        ];
+
+        let edges = vec![
+            GraphEdge {
+                id: "edge1".to_string(),
+                source: "node1".to_string(),
+                target: "node2".to_string(),
+            }
+        ];
+
+        let graph_data = GraphData { nodes, edges };
+        
+        // Test serialization
+        let json = serde_json::to_string(&graph_data).unwrap();
+        assert!(json.contains("Test Node"));
+        assert!(json.contains("node1"));
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Load environment variables from .env file
@@ -109,6 +146,7 @@ async fn main() -> std::io::Result<()> {
             .service(canvas_controller::get_canvas)
             .service(canvas_controller::update_canvas)
             .service(canvas_controller::delete_canvas)
+            .service(canvas_controller::get_canvas_graph_data)
     })
     .bind((host, port))?
     .run()

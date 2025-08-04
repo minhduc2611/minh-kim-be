@@ -1,4 +1,4 @@
-use crate::models::canvas::{Canvas, CreateCanvasRequest, GetCanvasesRequest, UpdateCanvasRequest};
+use crate::models::canvas::{Canvas, CreateCanvasRequest, GetCanvasesRequest, UpdateCanvasRequest, GraphData};
 use crate::models::common::PaginatedResponse;
 use async_trait::async_trait;
 
@@ -33,4 +33,7 @@ pub trait CanvasServiceTrait: Send + Sync {
     ) -> Result<Canvas, CanvasServiceError>;
 
     async fn delete_canvas(&self, id: &str) -> Result<(), CanvasServiceError>;
+
+    // New method for graph data
+    async fn get_graph_data(&self, canvas_id: &str) -> Result<GraphData, CanvasServiceError>;
 }

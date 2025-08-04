@@ -1,6 +1,6 @@
 use crate::dao::canvas_dao_trait::{CanvasRepository, CanvasRepositoryError};
 use crate::models::canvas::{
-    Canvas, CreateCanvasRequest, GetCanvasesRequest, InsertCanvas, UpdateCanvasRequest,
+    Canvas, CreateCanvasRequest, GetCanvasesRequest, InsertCanvas, UpdateCanvasRequest, GraphData,
 };
 use crate::models::common::PaginatedResponse;
 use crate::services::canvas_service_trait::{CanvasServiceError, CanvasServiceTrait};
@@ -108,6 +108,27 @@ impl CanvasServiceTrait for CanvasService {
             Err(CanvasRepositoryError::NotFound) => Err(CanvasServiceError::NotFound),
             Err(e) => Err(Self::map_repository_error(e)),
         }
+    }
+
+    async fn get_graph_data(&self, canvas_id: &str) -> Result<GraphData, CanvasServiceError> {
+        // Validate canvas ID format
+        Self::validate_id(canvas_id)?;
+
+        // Get topics and relationships from repository
+        let topics = self.repository
+            .get_topics_by_canvas(canvas_id)
+            .await
+            .map_err(Self::map_repository_error)?;
+
+        let relationships = self.repository
+            .get_relationships_by_canvas(canvas_id)
+            .await
+            .map_err(Self::map_repository_error)?;
+
+        Ok(GraphData {
+            nodes: topics,
+            edges: relationships,
+        })
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::dao::canvas_dao_trait::{CanvasRepository, CanvasRepositoryError};
 use crate::database::Database;
-use crate::models::canvas::{Canvas, GetCanvasesRequest, InsertCanvas, UpdateCanvasRequest};
+use crate::models::canvas::{Canvas, GetCanvasesRequest, InsertCanvas, UpdateCanvasRequest, GraphNode, GraphEdge};
 use crate::models::common::PaginatedResponse;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -271,6 +271,81 @@ impl CanvasRepository for CanvasDao {
             ))
         }
     }
+
+    async fn get_topics_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, CanvasRepositoryError> {
+        let graph = self.database.get_graph();
+
+        // Query to get all Topic nodes that belong to the specified canvas
+        let cypher = query(
+            "MATCH (c:Canvas {id: $canvas_id})-[:BELONGS_TO]->(t:Topic)
+             RETURN t",
+        )
+        .param("canvas_id", canvas_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
+
+        let mut topics = Vec::new();
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("t")
+                .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
+
+            topics.push(Self::node_to_graph_node(node)?);
+        }
+
+        Ok(topics)
+    }
+
+    async fn get_relationships_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphEdge>, CanvasRepositoryError> {
+        let graph = self.database.get_graph();
+
+        // Query to get all relationships between topics that belong to the specified canvas
+        // Instead of trying to get the relationship object, we'll get the relationship properties
+        let cypher = query(
+            "MATCH (c:Canvas {id: $canvas_id})-[:BELONGS_TO]->(t1:Topic)-[r:RELATES_TO]->(t2:Topic)<-[:BELONGS_TO]-(c)
+             RETURN t1.id as source_id, t2.id as target_id, r.id as relationship_id",
+        )
+        .param("canvas_id", canvas_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?;
+
+        let mut relationships = Vec::new();
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| CanvasRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let source_id = row
+                .get::<String>("source_id")
+                .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
+
+            let target_id = row
+                .get::<String>("target_id")
+                .map_err(|e| CanvasRepositoryError::InvalidData(e.to_string()))?;
+
+            let relationship_id = row
+                .get::<String>("relationship_id")
+                .unwrap_or_else(|_| format!("{}-{}", source_id, target_id));
+
+            relationships.push(GraphEdge {
+                id: relationship_id,
+                source: source_id,
+                target: target_id,
+            });
+        }
+
+        Ok(relationships)
+    }
 }
 
 impl CanvasDao {
@@ -304,6 +379,42 @@ impl CanvasDao {
             system_instruction,
             created_at: Self::parse_neo4j_datetime(&created_at_raw)?,
             updated_at: Self::parse_neo4j_datetime(&updated_at_raw)?,
+        })
+    }
+
+    fn node_to_graph_node(node: neo4rs::Node) -> Result<GraphNode, CanvasRepositoryError> {
+        let id = node
+            .get::<String>("id")
+            .map_err(|e| CanvasRepositoryError::InvalidData(format!("id: {}", e)))?;
+
+        let name = node
+            .get::<String>("name")
+            .map_err(|e| CanvasRepositoryError::InvalidData(format!("name: {}", e)))?;
+
+        let node_type = node
+            .get::<String>("type")
+            .unwrap_or_else(|_| "original".to_string());
+
+        let description = node.get::<String>("description").ok();
+
+        let knowledge = node.get::<String>("knowledge").ok();
+
+        let position_x = node
+            .get::<f64>("positionX")
+            .unwrap_or(0.0);
+
+        let position_y = node
+            .get::<f64>("positionY")
+            .unwrap_or(0.0);
+
+        Ok(GraphNode {
+            id,
+            name,
+            node_type,
+            description,
+            knowledge,
+            position_x,
+            position_y,
         })
     }
 

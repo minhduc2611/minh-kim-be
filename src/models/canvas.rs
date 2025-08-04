@@ -12,6 +12,30 @@ pub struct Canvas {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphNode {
+    pub id: String,
+    pub name: String,
+    pub node_type: String, // "original" or "generated"
+    pub description: Option<String>,
+    pub knowledge: Option<String>,
+    pub position_x: f64,
+    pub position_y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphEdge {
+    pub id: String,
+    pub source: String,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphData {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateCanvasRequest {
     pub name: String,

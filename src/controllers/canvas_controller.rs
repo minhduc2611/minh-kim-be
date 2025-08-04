@@ -8,7 +8,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 /// GET /canvas - Get all canvases (list view) - REQUIRES AUTHENTICATION
-#[get("/canvas")]
+#[get("/api/v1/canvas")]
 pub async fn get_canvas_list(
     authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
@@ -74,7 +74,7 @@ pub async fn get_canvas_list(
 }
 
 /// POST /canvas - Create a new canvas - REQUIRES AUTHENTICATION
-#[post("/canvas")]
+#[post("/api/v1/canvas")]
 pub async fn create_canvas(
     authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
@@ -118,7 +118,7 @@ pub async fn create_canvas(
 }
 
 /// GET /canvas/{id} - Get canvas by ID - REQUIRES AUTHENTICATION
-#[get("/canvas/{id}")]
+#[get("/api/v1/canvas/{id}")]
 pub async fn get_canvas(
     _authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
@@ -162,7 +162,7 @@ pub async fn get_canvas(
 }
 
 /// PUT /canvas/{id} - Update canvas - REQUIRES AUTHENTICATION
-#[put("/canvas/{id}")]
+#[put("/api/v1/canvas/{id}")]
 pub async fn update_canvas(
     _authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
@@ -207,7 +207,7 @@ pub async fn update_canvas(
 }
 
 /// DELETE /canvas/{id} - Delete canvas - REQUIRES AUTHENTICATION
-#[delete("/canvas/{id}")]
+#[delete("/api/v1/canvas/{id}")]
 pub async fn delete_canvas(
     _authenticated_user: AuthenticatedUser,
     service: web::Data<Arc<dyn CanvasServiceTrait>>,
@@ -221,6 +221,50 @@ pub async fn delete_canvas(
             "data": null,
             "pagination": null,
             "message": "Canvas deleted successfully",
+            "error": null
+        }))),
+        Err(CanvasServiceError::NotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "NotFound"
+        }))),
+        Err(CanvasServiceError::ValidationError(msg)) => {
+            Ok(HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "data": null,
+                "pagination": null,
+                "message": msg,
+                "error": "ValidationError"
+            })))
+        }
+        Err(CanvasServiceError::DatabaseError(msg)) => Ok(HttpResponse::InternalServerError()
+            .json(json!({
+                "success": false,
+                "data": null,
+                "pagination": null,
+                "message": msg,
+                "error": "DatabaseError"
+            }))),
+    }
+}
+
+/// GET /canvas/{canvasId}/graph-data - Get graph data for a canvas - REQUIRES AUTHENTICATION
+#[get("/api/v1/canvas/{canvas_id}/graph-data")]
+pub async fn get_canvas_graph_data(
+    _authenticated_user: AuthenticatedUser,
+    service: web::Data<Arc<dyn CanvasServiceTrait>>,
+    path: web::Path<String>,
+) -> Result<impl Responder> {
+    let canvas_id = path.into_inner();
+
+    match service.get_graph_data(&canvas_id).await {
+        Ok(graph_data) => Ok(HttpResponse::Ok().json(json!({
+            "success": true,
+            "data": graph_data,
+            "pagination": null,
+            "message": null,
             "error": null
         }))),
         Err(CanvasServiceError::NotFound) => Ok(HttpResponse::NotFound().json(json!({
