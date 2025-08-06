@@ -9,7 +9,6 @@ use google_cloud_aiplatform_v1::model::tool::GoogleSearch;
 use async_trait::async_trait;
 use crate::services::vertex_ai_service_trait::{VertexAIServiceTrait, VertexAIServiceError, VertexAIRequestConfig, VertexAIConfig, ChatRequest, ChatResponse};
 use crate::services::agents_service::get_mock_agents;
-// use google_cloud_aiplatform_v1::model::{Schema, Type};
 
 
 pub struct VertexAIService {
@@ -24,7 +23,7 @@ impl VertexAIService {
     }
 
     pub async fn generate_content(&self, prompt: &str, request_config: Option<VertexAIRequestConfig>) -> Result<String, VertexAIServiceError> {
-        println!("VertexAIService::generate_content called with prompt: {}", prompt);
+        println!("VertexAIService::generate_content called with prompt");
         
         let request_config = request_config.unwrap_or(VertexAIRequestConfig {
             model_id: "gemini-2.0-flash-001".to_string(),
@@ -33,6 +32,7 @@ impl VertexAIService {
             include_thoughts: false,
             use_google_search: false,
             use_retrieval: false,
+            response_schema: None,
         });
 
         let mut model_name = format!(
@@ -45,6 +45,7 @@ impl VertexAIService {
         let agent_key = request_config.agent_key.as_deref().unwrap_or("");
         let agents = get_mock_agents();
         let agent = agents.iter().find(|a| a.key == agent_key);
+        let response_schema = request_config.response_schema.clone();
         if let Some(agent) = agent {
             system_prompt = agent.system_prompt.to_string();
             model_name = format!(
@@ -76,6 +77,10 @@ impl VertexAIService {
             thinking_config.include_thoughts = Some(true);
             generation_config.thinking_config = Some(thinking_config);
         }
+        if let Some(schema) = response_schema {
+            generation_config.response_schema = Some(schema);
+            generation_config.response_mime_type = "application/json".to_string();
+        }
 
         let mut request = GenerateContentRequest::default();
         request.model = model_name.clone();
@@ -87,7 +92,10 @@ impl VertexAIService {
         }
         if request_config.use_retrieval {
         }
-        request.tools = vec![tool];
+        if request_config.use_google_search || request_config.use_retrieval {
+            println!("VertexAIService::generate_content using tools");
+            request.tools = vec![tool];
+        }
         request.system_instruction = Some(Content::new()
             .set_role("system")
             .set_parts(

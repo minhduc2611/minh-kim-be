@@ -1,11 +1,14 @@
 use crate::dao::canvas_dao_trait::CanvasRepository;
 use crate::dao::node_dao_trait::NodeRepository;
 use crate::models::canvas::GraphNode;
-use crate::services::vertex_ai_service::{VertexAIService};
-use crate::services::vertex_ai_service_trait::{VertexAIRequestConfig};
-use crate::services::ai_service_trait::{AIServiceTrait, AIServiceError};
+use crate::services::ai_service_trait::{AIServiceError, AIServiceTrait};
+use crate::services::vertex_ai_service::VertexAIService;
+use crate::services::vertex_ai_service_trait::VertexAIRequestConfig;
 use async_trait::async_trait;
+use google_cloud_aiplatform_v1::model::{Schema, Type};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
 use std::sync::Arc;
 
 #[derive(Debug, Deserialize)]
@@ -61,7 +64,8 @@ impl AIService {
             .await
             .map_err(|e| AIServiceError::DatabaseError(format!("Failed to get canvas: {}", e)))?;
 
-        let canvas = canvas.ok_or_else(|| AIServiceError::CanvasNotFound(request.canvas_id.clone()))?;
+        let canvas =
+            canvas.ok_or_else(|| AIServiceError::CanvasNotFound(request.canvas_id.clone()))?;
 
         // Get the source topic node by name
         let source_topic = self
@@ -69,7 +73,8 @@ impl AIService {
             .await
             .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
 
-        let source_topic = source_topic.ok_or_else(|| AIServiceError::TopicNotFound(request.topic_name.clone()))?;
+        let source_topic = source_topic
+            .ok_or_else(|| AIServiceError::TopicNotFound(request.topic_name.clone()))?;
 
         // Get the hierarchical path, existing siblings, and children for context
         let topic_path = self
@@ -149,7 +154,10 @@ impl AIService {
         };
 
         let context_info = if !relevant_chunks.is_empty() {
-            format!("- Available Context: {} relevant document chunks found", relevant_chunks.len())
+            format!(
+                "- Available Context: {} relevant document chunks found",
+                relevant_chunks.len()
+            )
         } else {
             "- Available Context: No document chunks found for this topic".to_string()
         };
@@ -212,20 +220,7 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
   </children-awareness>
   {}
 </task-description>
-<format>
-  Respond ONLY with a valid JSON object in the format
-  <example>
-    {{ "keywords": ["Competitive Landscape Assessment", "Key SaaS Market Metrics", "Target Customer Segmentation"] }}
-  </example>
-  <example>
-    {{ "keywords": ["keyword1", "keyword2", ...] }}
-  </example>
-  <NOT>
-  ```json
-  {{ "keywords": ["keyword1", "keyword2", ...] }}
-  ```
-  </NOT>
-</format>"#,
+"#,
             if is_automatic {
                 "you should determine the optimal number of keywords (maximum 15)"
             } else {
@@ -252,23 +247,37 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
             }
         );
 
+        let items:std::boxed::Box<Schema>=Box::new(Schema::default().set_type(Type::String));
+        let properties: std::collections::HashMap<std::string::String, Schema> = HashMap::from([(
+            "keywords".to_string(),
+            Schema::default().set_type(Type::Array).set_items(*items),
+        )]);
+        let response_schema = Schema::default()
+            .set_type(Type::Object)
+            .set_properties(properties);
+
         let request_config = VertexAIRequestConfig {
             model_id: "gemini-2.0-flash-001".to_string(),
             agent_key: None,
             system_prompt: Some(instructions.clone()),
             include_thoughts: false,
-            use_google_search: true,
+            use_google_search: false,
             use_retrieval: false,
+            response_schema: Some(response_schema),
         };
         let response = self
             .vertex_ai_service
-            .generate_content(&format!("{}\n\n{}", instructions, input), Some(request_config))
+            .generate_content(
+                &format!("{}\n\n{}", instructions, input),
+                Some(request_config),
+            )
             .await
             .map_err(|e| AIServiceError::AIServiceError(format!("AI service error: {}", e)))?;
 
         // Parse the AI response
-        let ai_result: serde_json::Value = serde_json::from_str(&response)
-            .map_err(|e| AIServiceError::InvalidResponseFormat(format!("Failed to parse AI response: {}", e)))?;
+        let ai_result: serde_json::Value = serde_json::from_str(&response).map_err(|e| {
+            AIServiceError::InvalidResponseFormat(format!("Failed to parse AI response: {}", e))
+        })?;
 
         let keywords = ai_result
             .get("keywords")
@@ -295,10 +304,12 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
         self.node_repository
             .get_node_by_name_and_canvas(name, canvas_id)
             .await
-            .map_err(|e| Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to get node by name and canvas: {}", e)
-            )) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to get node by name and canvas: {}", e),
+                )) as Box<dyn std::error::Error + Send + Sync>
+            })
     }
 
     async fn get_topic_path(
@@ -309,10 +320,12 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
         self.node_repository
             .get_topic_path(topic_id, canvas_id)
             .await
-            .map_err(|e| Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to get topic path: {}", e)
-            )) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to get topic path: {}", e),
+                )) as Box<dyn std::error::Error + Send + Sync>
+            })
     }
 
     async fn get_existing_siblings(
@@ -323,10 +336,12 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
         self.node_repository
             .get_existing_siblings(topic_id, canvas_id)
             .await
-            .map_err(|e| Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to get existing siblings: {}", e)
-            )) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to get existing siblings: {}", e),
+                )) as Box<dyn std::error::Error + Send + Sync>
+            })
     }
 
     async fn get_topic_children(
@@ -337,10 +352,12 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
         self.node_repository
             .get_topic_children(topic_id, canvas_id)
             .await
-            .map_err(|e| Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to get topic children: {}", e)
-            )) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to get topic children: {}", e),
+                )) as Box<dyn std::error::Error + Send + Sync>
+            })
     }
 }
 

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use google_cloud_aiplatform_v1::model::Schema;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VertexAIServiceError {
@@ -51,6 +52,7 @@ pub struct VertexAIRequestConfig {
     pub include_thoughts: bool,
     pub use_google_search: bool,
     pub use_retrieval: bool,
+    pub response_schema: Option<Schema>,
 }
 
 
