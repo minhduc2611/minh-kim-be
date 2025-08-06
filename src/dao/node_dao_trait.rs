@@ -16,37 +16,37 @@ pub enum NodeRepositoryError {
 
 #[async_trait]
 pub trait NodeRepository: Send + Sync {
-    async fn create_topic(
+    async fn create_topic_node(
         &self,
         insert_node: InsertNode,
     ) -> Result<GraphNode, NodeRepositoryError>;
 
-    async fn get_topic_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError>;
+    async fn get_topic_node_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError>;
 
-    async fn get_topics(
+    async fn get_topic_nodes(
         &self,
         request: GetNodesRequest,
     ) -> Result<PaginatedResponse<GraphNode>, NodeRepositoryError>;
 
-    async fn get_topics_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, NodeRepositoryError>;
+    async fn get_topic_nodes_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, NodeRepositoryError>;
 
-    async fn update_topic(
+    async fn update_topic_node(
         &self,
         id: &str,
         updates: UpdateNodeRequest,
     ) -> Result<Option<GraphNode>, NodeRepositoryError>;
 
-    async fn delete_topic(&self, id: &str) -> Result<(), NodeRepositoryError>;
+    async fn delete_topic_node(&self, id: &str) -> Result<(), NodeRepositoryError>;
 
-    async fn delete_topics_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError>;
+    async fn delete_topic_nodes_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError>;
 
-    async fn get_topic_by_name_and_canvas(
+    async fn get_topic_node_by_name_and_canvas(
         &self,
         name: &str,
         canvas_id: &str,
     ) -> Result<Option<GraphNode>, NodeRepositoryError>;
 
-    async fn get_topic_path(
+    async fn get_topic_node_path(
         &self,
         topic_id: &str,
         canvas_id: &str,
@@ -58,7 +58,7 @@ pub trait NodeRepository: Send + Sync {
         canvas_id: &str,
     ) -> Result<Vec<String>, NodeRepositoryError>;
 
-    async fn get_topic_children(
+    async fn get_topic_node_children(
         &self,
         topic_id: &str,
         canvas_id: &str,

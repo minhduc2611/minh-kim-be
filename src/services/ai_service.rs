@@ -295,7 +295,7 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
 
         for keyword in &keywords {
             let keyword_topic = self.node_repository
-                .create_topic(InsertNode {
+                .create_topic_node(InsertNode {
                     id: uuid::Uuid::new_v4().to_string(),
                     canvas_id: request.canvas_id.clone(),
                     name: keyword.clone(),
@@ -344,7 +344,7 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
     ) -> Result<Option<GraphNode>, Box<dyn std::error::Error + Send + Sync>> {
         // Use the new method to get node by name and canvas ID
         self.node_repository
-            .get_topic_by_name_and_canvas(name, canvas_id)
+            .get_topic_node_by_name_and_canvas(name, canvas_id)
             .await
             .map_err(|e| {
                 Box::new(std::io::Error::new(
@@ -360,7 +360,7 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
         canvas_id: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
         self.node_repository
-            .get_topic_path(topic_id, canvas_id)
+            .get_topic_node_path(topic_id, canvas_id)
             .await
             .map_err(|e| {
                 Box::new(std::io::Error::new(
@@ -392,7 +392,7 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
         canvas_id: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
         self.node_repository
-            .get_topic_children(topic_id, canvas_id)
+            .get_topic_node_children(topic_id, canvas_id)
             .await
             .map_err(|e| {
                 Box::new(std::io::Error::new(

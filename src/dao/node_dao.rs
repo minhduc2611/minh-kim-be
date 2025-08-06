@@ -19,7 +19,7 @@ impl NodeDao {
 
 #[async_trait]
 impl NodeRepository for NodeDao {
-    async fn create_topic(
+    async fn create_topic_node(
         &self,
         insert_node: InsertNode,
     ) -> Result<GraphNode, NodeRepositoryError> {
@@ -72,7 +72,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_topic_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError> {
+    async fn get_topic_node_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query("MATCH (n:Topic {id: $id}) RETURN n")
@@ -98,7 +98,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_topics(
+    async fn get_topic_nodes(
         &self,
         request: GetNodesRequest,
     ) -> Result<PaginatedResponse<GraphNode>, NodeRepositoryError> {
@@ -163,7 +163,7 @@ impl NodeRepository for NodeDao {
         Ok(PaginatedResponse::new(nodes, total, limit, offset))
     }
 
-    async fn get_topics_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, NodeRepositoryError> {
+    async fn get_topic_nodes_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query(
@@ -194,7 +194,7 @@ impl NodeRepository for NodeDao {
         Ok(nodes)
     }
 
-    async fn update_topic(
+    async fn update_topic_node(
         &self,
         id: &str,
         updates: UpdateNodeRequest,
@@ -236,7 +236,7 @@ impl NodeRepository for NodeDao {
         }
 
         if set_clauses.is_empty() {
-            return self.get_topic_by_id(id).await;
+            return self.get_topic_node_by_id(id).await;
         }
 
         let cypher_str = format!(
@@ -271,7 +271,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn delete_topic(&self, id: &str) -> Result<(), NodeRepositoryError> {
+    async fn delete_topic_node(&self, id: &str) -> Result<(), NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query(
@@ -307,7 +307,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn delete_topics_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError> {
+    async fn delete_topic_nodes_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query(
@@ -339,7 +339,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_topic_by_name_and_canvas(
+    async fn get_topic_node_by_name_and_canvas(
         &self,
         name: &str,
         canvas_id: &str,
@@ -371,7 +371,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_topic_path(
+    async fn get_topic_node_path(
         &self,
         topic_id: &str,
         canvas_id: &str,
@@ -445,7 +445,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_topic_children(
+    async fn get_topic_node_children(
         &self,
         topic_id: &str,
         canvas_id: &str,
