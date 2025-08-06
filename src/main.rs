@@ -8,7 +8,7 @@ mod middleware;
 mod models;
 mod services;
 
-use controllers::{auth_controller, canvas_controller, email_controller, node_controller};
+use controllers::{ai_controller, auth_controller, canvas_controller, email_controller, node_controller};
 use dao::canvas_dao::CanvasDao;
 use dao::canvas_dao_trait::CanvasRepository;
 use dao::node_dao::NodeDao;
@@ -23,6 +23,8 @@ use services::email_service::EmailService;
 use services::email_service_trait::EmailConfig;
 use services::email_service_trait::EmailServiceTrait;
 use services::dummy_email_service::DummyEmailService;
+use services::vertex_ai_service::VertexAIService;
+use services::vertex_ai_service_trait::VertexAIServiceTrait;
 use std::sync::Arc;
 
 #[get("/")]
@@ -89,6 +91,9 @@ async fn main() -> std::io::Result<()> {
     let node_service: Arc<dyn NodeServiceTrait> =
         Arc::new(NodeService::new(node_repository));
 
+    // Set up Vertex AI service
+    let ai_service: Arc<dyn VertexAIServiceTrait> = Arc::new(VertexAIService::new(None));
+
     // Set up auth service with Supabase (you can change to JWT+Weviate if needed)
     let auth_service: Arc<dyn AuthServiceTrait> = Arc::new(AuthService::with_supabase(
         services::auth_service::SupabaseConfig {
@@ -132,6 +137,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(database.clone()))
             .app_data(web::Data::new(canvas_service.clone()))
             .app_data(web::Data::new(node_service.clone()))
+            .app_data(web::Data::new(ai_service.clone()))
             .app_data(web::Data::new(auth_service.clone()))
             .app_data(web::Data::new(email_service.clone()))
             .service(hello)
@@ -164,6 +170,8 @@ async fn main() -> std::io::Result<()> {
             .service(node_controller::delete_node)
             .service(node_controller::get_nodes_by_canvas)
             .service(node_controller::delete_nodes_by_canvas)
+            // AI endpoints
+            .service(ai_controller::generate_ai_content)
     })
     .bind((host, port))?
     .run()
