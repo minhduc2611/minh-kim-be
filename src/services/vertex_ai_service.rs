@@ -4,48 +4,13 @@ use google_cloud_aiplatform_v1::model::{
 };
 use google_cloud_aiplatform_v1::model::generation_config::ThinkingConfig;
 use google_cloud_aiplatform_v1::model::part::Data;
-use serde::{Deserialize, Serialize};
+use google_cloud_aiplatform_v1::model::Tool;
+use google_cloud_aiplatform_v1::model::tool::GoogleSearch;
 use async_trait::async_trait;
-use crate::services::vertex_ai_service_trait::{VertexAIServiceTrait, VertexAIServiceError};
-
+use crate::services::vertex_ai_service_trait::{VertexAIServiceTrait, VertexAIServiceError, VertexAIRequestConfig, VertexAIConfig, ChatRequest, ChatResponse};
 use crate::services::agents_service::get_mock_agents;
+// use google_cloud_aiplatform_v1::model::{Schema, Type};
 
-#[derive(Debug, Deserialize)]
-pub struct ChatRequest {
-    pub history: Option<Vec<String>>,
-    pub context: Option<String>,
-    pub prompt: String,
-    pub agent_key: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ChatResponse {
-    pub response: String,
-    pub prompt: String,
-    pub context: Option<String>,
-    pub history: Option<Vec<String>>,
-    pub agent_key: Option<String>,
-}
-
-pub struct VertexAIConfig {
-    pub project_id: String,
-    pub location: String,
-    pub model_id: String,
-    pub include_thoughts: bool,
-    pub agent_key: Option<String>,
-}
-
-impl Default for VertexAIConfig {
-    fn default() -> Self {
-        Self {
-            project_id: "llm-project-2d719".to_string(),
-            location: "us-central1".to_string(),
-            model_id: "gemini-2.0-flash-001".to_string(),
-            include_thoughts: false,
-            agent_key: None,
-        }
-    }
-}
 
 pub struct VertexAIService {
     config: VertexAIConfig,
@@ -58,21 +23,30 @@ impl VertexAIService {
         }
     }
 
-    pub async fn generate_content(&self, prompt: &str) -> Result<String, VertexAIServiceError> {
+    pub async fn generate_content(&self, prompt: &str, request_config: Option<VertexAIRequestConfig>) -> Result<String, VertexAIServiceError> {
         println!("VertexAIService::generate_content called with prompt: {}", prompt);
         
+        let request_config = request_config.unwrap_or(VertexAIRequestConfig {
+            model_id: "gemini-2.0-flash-001".to_string(),
+            agent_key: None,
+            system_prompt: None,
+            include_thoughts: false,
+            use_google_search: false,
+            use_retrieval: false,
+        });
+
         let mut model_name = format!(
             "projects/{}/locations/{}/publishers/google/models/{}",
-            self.config.project_id, self.config.location, self.config.model_id
+            self.config.project_id, self.config.location, request_config.model_id
         );
 
-        let mut system_prompt = String::new();
+        let mut system_prompt = request_config.system_prompt.as_deref().unwrap_or("").to_string();
         let mut temperature = 0.2;
-        let agent_key = self.config.agent_key.as_deref().unwrap_or("code_assistant_pro");
+        let agent_key = request_config.agent_key.as_deref().unwrap_or("");
         let agents = get_mock_agents();
         let agent = agents.iter().find(|a| a.key == agent_key);
         if let Some(agent) = agent {
-            system_prompt = agent.system_prompt.clone();
+            system_prompt = agent.system_prompt.to_string();
             model_name = format!(
                 "projects/{}/locations/{}/publishers/google/models/{}",
                 self.config.project_id, self.config.location, agent.model
@@ -97,7 +71,7 @@ impl VertexAIService {
         generation_config.top_p = Some(1.0);
         generation_config.top_k = Some(40.0);
         generation_config.max_output_tokens = Some(2048);
-        if self.config.include_thoughts {
+        if request_config.include_thoughts {
             let mut thinking_config = ThinkingConfig::default();
             thinking_config.include_thoughts = Some(true);
             generation_config.thinking_config = Some(thinking_config);
@@ -107,6 +81,13 @@ impl VertexAIService {
         request.model = model_name.clone();
         request.contents = vec![user_content];
         request.generation_config = Some(generation_config);
+        let mut tool = Tool::default();
+        if request_config.use_google_search {
+            tool.google_search = Some(GoogleSearch::default());
+        }
+        if request_config.use_retrieval {
+        }
+        request.tools = vec![tool];
         request.system_instruction = Some(Content::new()
             .set_role("system")
             .set_parts(
@@ -133,14 +114,14 @@ impl VertexAIService {
             }
         }
 
-        println!("VertexAIService::generate_content returning response");
+        println!("VertexAIService::generate_content returning response: {}", response_text);
         Ok(response_text)
     }
 
     pub async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse, VertexAIServiceError> {
         println!("VertexAIService::chat called with request: {:?}", request);
         
-        let response_text = self.generate_content(&request.prompt).await?;
+        let response_text = self.generate_content(&request.prompt, None).await?;
         
         let response = ChatResponse {
             response: response_text,
@@ -157,9 +138,9 @@ impl VertexAIService {
 
 #[async_trait]
 impl VertexAIServiceTrait for VertexAIService {
-    async fn generate_content(&self, prompt: &str) -> Result<String, VertexAIServiceError> {
+    async fn generate_content(&self, prompt: &str, request_config: Option<VertexAIRequestConfig>) -> Result<String, VertexAIServiceError> {
         println!("VertexAIServiceTrait::generate_content called");
-        self.generate_content(prompt).await
+        self.generate_content(prompt, request_config).await
     }
 
     async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse, VertexAIServiceError> {

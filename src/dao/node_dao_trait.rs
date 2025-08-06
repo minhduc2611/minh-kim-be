@@ -39,4 +39,28 @@ pub trait NodeRepository: Send + Sync {
     async fn delete_node(&self, id: &str) -> Result<(), NodeRepositoryError>;
 
     async fn delete_nodes_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError>;
+
+    async fn get_node_by_name_and_canvas(
+        &self,
+        name: &str,
+        canvas_id: &str,
+    ) -> Result<Option<GraphNode>, NodeRepositoryError>;
+
+    async fn get_topic_path(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, NodeRepositoryError>;
+
+    async fn get_existing_siblings(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, NodeRepositoryError>;
+
+    async fn get_topic_children(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, NodeRepositoryError>;
 } 

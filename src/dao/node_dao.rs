@@ -27,7 +27,7 @@ impl NodeRepository for NodeDao {
 
         let cypher = query(
             "MATCH (c:Canvas {id: $canvas_id})
-             CREATE (n:Node {
+             CREATE (n:Topic {
                  id: $id,
                  canvasId: $canvas_id,
                  name: $name,
@@ -75,7 +75,7 @@ impl NodeRepository for NodeDao {
     async fn get_node_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError> {
         let graph = self.database.get_graph();
 
-        let cypher = query("MATCH (n:Node {id: $id}) RETURN n")
+        let cypher = query("MATCH (n:Topic {id: $id}) RETURN n")
             .param("id", id);
 
         let mut result = graph
@@ -109,7 +109,7 @@ impl NodeRepository for NodeDao {
 
         // First query: Get total count
         let count_cypher = query(
-            "MATCH (n:Node {canvasId: $canvas_id})
+            "MATCH (n:Topic {canvasId: $canvas_id})
              RETURN count(n) as total",
         )
         .param("canvas_id", request.canvas_id.clone());
@@ -132,7 +132,7 @@ impl NodeRepository for NodeDao {
 
         // Second query: Get paginated data
         let data_cypher = query(
-            "MATCH (n:Node {canvasId: $canvas_id})
+            "MATCH (n:Topic {canvasId: $canvas_id})
              RETURN n
              ORDER BY n.createdAt ASC
              SKIP $offset
@@ -167,7 +167,7 @@ impl NodeRepository for NodeDao {
         let graph = self.database.get_graph();
 
         let cypher = query(
-            "MATCH (n:Node {canvasId: $canvas_id})
+            "MATCH (n:Topic {canvasId: $canvas_id})
              RETURN n
              ORDER BY n.createdAt ASC",
         )
@@ -240,7 +240,7 @@ impl NodeRepository for NodeDao {
         }
 
         let cypher_str = format!(
-            "MATCH (n:Node {{id: $id}})
+            "MATCH (n:Topic {{id: $id}})
              SET {}
              RETURN n",
             set_clauses.join(", ")
@@ -275,7 +275,7 @@ impl NodeRepository for NodeDao {
         let graph = self.database.get_graph();
 
         let cypher = query(
-            "MATCH (n:Node {id: $id}) 
+            "MATCH (n:Topic {id: $id}) 
              DETACH DELETE n 
              RETURN count(n) as deleted_count",
         )
@@ -311,7 +311,7 @@ impl NodeRepository for NodeDao {
         let graph = self.database.get_graph();
 
         let cypher = query(
-            "MATCH (n:Node {canvasId: $canvas_id}) 
+            "MATCH (n:Topic {canvasId: $canvas_id}) 
              DETACH DELETE n 
              RETURN count(n) as deleted_count",
         )
@@ -336,6 +336,146 @@ impl NodeRepository for NodeDao {
             Err(NodeRepositoryError::DatabaseError(
                 "Failed to execute delete query".to_string(),
             ))
+        }
+    }
+
+    async fn get_node_by_name_and_canvas(
+        &self,
+        name: &str,
+        canvas_id: &str,
+    ) -> Result<Option<GraphNode>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query("MATCH (n:Topic {name: $name, canvasId: $canvas_id}) RETURN n")
+            .param("name", name)
+            .param("canvas_id", canvas_id);
+        println!("cypher: MATCH (n:Topic {{name: \"{}\", canvasId: \"{}\"}}) RETURN n", name, canvas_id);
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let node = row
+                .get::<neo4rs::Node>("n")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            let graph_node = Self::node_to_graph_node(node)?;
+            Ok(Some(graph_node))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn get_topic_path(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH path = (root:Topic)-[:RELATED_TO*0..]->(target:Topic {id: $topic_id})
+             WHERE NOT ()-[:RELATED_TO]->(root:Topic {canvasId: $canvas_id})
+             AND root.canvasId = $canvas_id
+             RETURN [node IN nodes(path) | node.name] AS pathNames
+             ORDER BY length(path) ASC
+             LIMIT 1",
+        )
+        .param("topic_id", topic_id)
+        .param("canvas_id", canvas_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let path_names = row
+                .get::<Vec<String>>("pathNames")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Ok(path_names)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn get_existing_siblings(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (parent:Topic)-[:RELATED_TO]->(current:Topic {id: $topic_id, canvasId: $canvas_id})
+             MATCH (parent)-[:RELATED_TO]->(sibling:Topic)
+             WHERE sibling.id <> $topic_id
+             RETURN COLLECT(sibling.name) AS siblings",
+        )
+        .param("topic_id", topic_id)
+        .param("canvas_id", canvas_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let siblings = row
+                .get::<Vec<String>>("siblings")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Ok(siblings)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn get_topic_children(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (current:Topic {id: $topic_id, canvasId: $canvas_id})-[:RELATED_TO]->(child:Topic)
+             RETURN COLLECT(child.name) AS children",
+        )
+        .param("topic_id", topic_id)
+        .param("canvas_id", canvas_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let children = row
+                .get::<Vec<String>>("children")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Ok(children)
+        } else {
+            Ok(Vec::new())
         }
     }
 }

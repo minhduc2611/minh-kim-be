@@ -25,6 +25,8 @@ use services::email_service_trait::EmailServiceTrait;
 use services::dummy_email_service::DummyEmailService;
 use services::vertex_ai_service::VertexAIService;
 use services::vertex_ai_service_trait::VertexAIServiceTrait;
+use services::ai_service::AIService;
+use services::ai_service_trait::AIServiceTrait;
 use std::sync::Arc;
 
 #[get("/")]
@@ -47,8 +49,8 @@ mod tests {
                 node_type: "original".to_string(),
                 description: Some("Test description".to_string()),
                 knowledge: None,
-                position_x: 100.0,
-                position_y: 200.0,
+                position_x: Some(100.0),
+                position_y: Some(200.0),
             }
         ];
 
@@ -85,14 +87,21 @@ async fn main() -> std::io::Result<()> {
     // Set up dependency injection
     let canvas_repository: Arc<dyn CanvasRepository> = Arc::new(CanvasDao::new(database.clone()));
     let canvas_service: Arc<dyn CanvasServiceTrait> =
-        Arc::new(CanvasService::new(canvas_repository));
+        Arc::new(CanvasService::new(canvas_repository.clone()));
 
     let node_repository: Arc<dyn NodeRepository> = Arc::new(NodeDao::new(database.clone()));
     let node_service: Arc<dyn NodeServiceTrait> =
-        Arc::new(NodeService::new(node_repository));
+        Arc::new(NodeService::new(node_repository.clone()));
 
     // Set up Vertex AI service
-    let ai_service: Arc<dyn VertexAIServiceTrait> = Arc::new(VertexAIService::new(None));
+    let vertex_ai_service: Arc<dyn VertexAIServiceTrait> = Arc::new(VertexAIService::new(None));
+    
+    // Set up AI service for keyword generation
+    let ai_service: Arc<dyn AIServiceTrait> = Arc::new(AIService::new(
+        canvas_repository.clone(),
+        node_repository.clone(),
+        VertexAIService::new(None),
+    ));
 
     // Set up auth service with Supabase (you can change to JWT+Weviate if needed)
     let auth_service: Arc<dyn AuthServiceTrait> = Arc::new(AuthService::with_supabase(
@@ -137,6 +146,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(database.clone()))
             .app_data(web::Data::new(canvas_service.clone()))
             .app_data(web::Data::new(node_service.clone()))
+            .app_data(web::Data::new(vertex_ai_service.clone()))
             .app_data(web::Data::new(ai_service.clone()))
             .app_data(web::Data::new(auth_service.clone()))
             .app_data(web::Data::new(email_service.clone()))
@@ -172,6 +182,7 @@ async fn main() -> std::io::Result<()> {
             .service(node_controller::delete_nodes_by_canvas)
             // AI endpoints
             .service(ai_controller::generate_ai_content)
+            .service(ai_controller::generate_keywords)
     })
     .bind((host, port))?
     .run()

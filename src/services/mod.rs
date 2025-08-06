@@ -19,3 +19,6 @@ pub mod vertex_ai_service_trait;
 pub mod vertex_ai_service;
 
 pub mod agents_service;
+
+pub mod ai_service;
+pub mod ai_service_trait;

@@ -1,1 +1,355 @@
+use crate::dao::canvas_dao_trait::CanvasRepository;
+use crate::dao::node_dao_trait::NodeRepository;
+use crate::models::canvas::GraphNode;
+use crate::services::vertex_ai_service::{VertexAIService};
+use crate::services::vertex_ai_service_trait::{VertexAIRequestConfig};
+use crate::services::ai_service_trait::{AIServiceTrait, AIServiceError};
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+#[derive(Debug, Deserialize)]
+pub struct GenerateKeywordsRequest {
+    pub topic_name: String,
+    pub canvas_id: String,
+    pub node_count: Option<i32>,
+    pub is_automatic: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GenerateKeywordsResponse {
+    pub keywords: Vec<String>,
+    pub edges: Vec<String>, // For future use
+}
+
+#[derive(Debug, Serialize)]
+struct SearchResult {
+    filename: String,
+    text: String,
+}
+
+pub struct AIService {
+    canvas_repository: Arc<dyn CanvasRepository + Send + Sync>,
+    node_repository: Arc<dyn NodeRepository + Send + Sync>,
+    vertex_ai_service: VertexAIService,
+}
+
+impl AIService {
+    pub fn new(
+        canvas_repository: Arc<dyn CanvasRepository + Send + Sync>,
+        node_repository: Arc<dyn NodeRepository + Send + Sync>,
+        vertex_ai_service: VertexAIService,
+    ) -> Self {
+        Self {
+            canvas_repository,
+            node_repository,
+            vertex_ai_service,
+        }
+    }
+
+    pub async fn generate_keywords(
+        &self,
+        request: GenerateKeywordsRequest,
+    ) -> Result<GenerateKeywordsResponse, AIServiceError> {
+        let node_count = request.node_count.unwrap_or(3);
+        let is_automatic = request.is_automatic.unwrap_or(false);
+
+        // Check if canvas exists
+        let canvas = self
+            .canvas_repository
+            .get_canvas_by_id(&request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(format!("Failed to get canvas: {}", e)))?;
+
+        let canvas = canvas.ok_or_else(|| AIServiceError::CanvasNotFound(request.canvas_id.clone()))?;
+
+        // Get the source topic node by name
+        let source_topic = self
+            .get_topic_by_name_and_canvas(&request.topic_name, &request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
+
+        let source_topic = source_topic.ok_or_else(|| AIServiceError::TopicNotFound(request.topic_name.clone()))?;
+
+        // Get the hierarchical path, existing siblings, and children for context
+        let topic_path = self
+            .get_topic_path(&source_topic.id, &request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
+
+        let existing_siblings = self
+            .get_existing_siblings(&source_topic.id, &request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
+
+        let topic_children = self
+            .get_topic_children(&source_topic.id, &request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
+
+        // Search for relevant document chunks using Weaviate (placeholder for now)
+        let relevant_chunks: Vec<SearchResult> = Vec::new(); // TODO: Implement Weaviate search
+
+        // Build the prompt for AI
+        let system_instruction_section = if !canvas.system_instruction.is_empty() {
+            format!(
+                "<system-instruction>\n{}\n</system-instruction>",
+                canvas.system_instruction
+            )
+        } else {
+            String::new()
+        };
+
+        // Build document context section
+        let document_context_section = if !relevant_chunks.is_empty() {
+            let chunks_text = relevant_chunks
+                .iter()
+                .enumerate()
+                .map(|(index, chunk)| {
+                    let truncated_text = if chunk.text.len() > 500 {
+                        format!("{}...", &chunk.text[..500])
+                    } else {
+                        chunk.text.clone()
+                    };
+                    format!(
+                        "Document {} ({}):\n\"{}\"",
+                        index + 1,
+                        chunk.filename,
+                        truncated_text
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            format!(
+                "<document-context>\nThe following are relevant document excerpts from the user's knowledge base related to \"{}\":\n\n{}\n\nUse this context to generate more informed and specific keywords that complement the existing knowledge.\n</document-context>",
+                request.topic_name, chunks_text
+            )
+        } else {
+            String::new()
+        };
+
+        let automatic_instructions = if is_automatic {
+            "- Mode: Automatic (generate an optimal number of keywords, maximum 15, based on the topic complexity, depth, and available context)".to_string()
+        } else {
+            format!("- Node Count: {}", node_count)
+        };
+
+        let children_section = if !topic_children.is_empty() {
+            format!(
+                "- Children: [{}]",
+                topic_children
+                    .iter()
+                    .map(|c| format!("\"{}\"", c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            String::new()
+        };
+
+        let context_info = if !relevant_chunks.is_empty() {
+            format!("- Available Context: {} relevant document chunks found", relevant_chunks.len())
+        } else {
+            "- Available Context: No document chunks found for this topic".to_string()
+        };
+
+        let topic_path_str = topic_path
+            .iter()
+            .map(|p| format!("\"{}\"", p))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let children_section_str = if !children_section.is_empty() {
+            format!("{}\n", children_section)
+        } else {
+            String::new()
+        };
+
+        let existing_siblings_str = if !existing_siblings.is_empty() {
+            existing_siblings
+                .iter()
+                .map(|s| format!("\"{}\"", s))
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            String::new()
+        };
+
+        let input = format!(
+            "- Topic: \"{}\"\n- Topic Path: [{}]\n{}- Existing Siblings: [{}]\n{}\n{}",
+            request.topic_name,
+            topic_path_str,
+            children_section_str,
+            existing_siblings_str,
+            automatic_instructions,
+            context_info
+        );
+
+        let instructions = format!(
+            r#"<persona>
+You are an expert in curriculum design and knowledge architecture. Your task is to generate keywords for a knowledge map to help a user learn a topic systematically.
+You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (if any), a list of 'existingSiblings' to avoid, {}, and relevant document context from the user's knowledge base.
+</persona>
+{}
+{}
+<task-description>
+  Your generated keywords MUST follow these rules:
+  <hierarchical-specificity>
+    The specificity of your keywords must adapt to the depth of the 'topicPath'.
+    * Shallow Path (1-2 levels deep): Generate broader, foundational sub-topics.
+    * Deep Path (3+ levels deep): Generate more specific, niche concepts, applications, or tools.  
+  </hierarchical-specificity>
+  <content-rich-mix>
+    Provide a mix of core concepts, practical applications, and emerging trends.
+    {}
+  </content-rich-mix>
+  <avoid-redundancy>
+    Do not repeat the 'topic' itself, any keywords from the 'existingSiblings' list, or any existing 'children'.
+  </avoid-redundancy>
+  <children-awareness>
+    If the topic already has children, consider the gaps or complementary areas that haven't been covered yet.
+  </children-awareness>
+  {}
+</task-description>
+<format>
+  Respond ONLY with a valid JSON object in the format
+  <example>
+    {{ "keywords": ["Competitive Landscape Assessment", "Key SaaS Market Metrics", "Target Customer Segmentation"] }}
+  </example>
+  <example>
+    {{ "keywords": ["keyword1", "keyword2", ...] }}
+  </example>
+  <NOT>
+  ```json
+  {{ "keywords": ["keyword1", "keyword2", ...] }}
+  ```
+  </NOT>
+</format>"#,
+            if is_automatic {
+                "you should determine the optimal number of keywords (maximum 15)"
+            } else {
+                "the desired 'nodeCount'"
+            },
+            system_instruction_section,
+            document_context_section,
+            if !relevant_chunks.is_empty() {
+                "Leverage the provided document context to generate keywords that build upon or complement the existing knowledge."
+            } else {
+                ""
+            },
+            if is_automatic {
+                r#"<automatic-count>
+    Since this is automatic mode, determine the optimal number of keywords based on:
+    * Topic complexity and breadth
+    * Depth in the learning hierarchy
+    * Existing siblings count
+    * Available document context richness
+    * Generate between 3-15 keywords as appropriate, prioritizing quality over quantity
+  </automatic-count>"#
+            } else {
+                ""
+            }
+        );
+
+        let request_config = VertexAIRequestConfig {
+            model_id: "gemini-2.0-flash-001".to_string(),
+            agent_key: None,
+            system_prompt: Some(instructions.clone()),
+            include_thoughts: false,
+            use_google_search: true,
+            use_retrieval: false,
+        };
+        let response = self
+            .vertex_ai_service
+            .generate_content(&format!("{}\n\n{}", instructions, input), Some(request_config))
+            .await
+            .map_err(|e| AIServiceError::AIServiceError(format!("AI service error: {}", e)))?;
+
+        // Parse the AI response
+        let ai_result: serde_json::Value = serde_json::from_str(&response)
+            .map_err(|e| AIServiceError::InvalidResponseFormat(format!("Failed to parse AI response: {}", e)))?;
+
+        let keywords = ai_result
+            .get("keywords")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_default();
+
+        Ok(GenerateKeywordsResponse {
+            keywords,
+            edges: Vec::new(), // For future use
+        })
+    }
+
+    async fn get_topic_by_name_and_canvas(
+        &self,
+        name: &str,
+        canvas_id: &str,
+    ) -> Result<Option<GraphNode>, Box<dyn std::error::Error + Send + Sync>> {
+        // Use the new method to get node by name and canvas ID
+        self.node_repository
+            .get_node_by_name_and_canvas(name, canvas_id)
+            .await
+            .map_err(|e| Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to get node by name and canvas: {}", e)
+            )) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn get_topic_path(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        self.node_repository
+            .get_topic_path(topic_id, canvas_id)
+            .await
+            .map_err(|e| Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to get topic path: {}", e)
+            )) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn get_existing_siblings(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        self.node_repository
+            .get_existing_siblings(topic_id, canvas_id)
+            .await
+            .map_err(|e| Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to get existing siblings: {}", e)
+            )) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn get_topic_children(
+        &self,
+        topic_id: &str,
+        canvas_id: &str,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        self.node_repository
+            .get_topic_children(topic_id, canvas_id)
+            .await
+            .map_err(|e| Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to get topic children: {}", e)
+            )) as Box<dyn std::error::Error + Send + Sync>)
+    }
+}
+
+#[async_trait]
+impl AIServiceTrait for AIService {
+    async fn generate_keywords(
+        &self,
+        request: GenerateKeywordsRequest,
+    ) -> Result<GenerateKeywordsResponse, AIServiceError> {
+        self.generate_keywords(request).await
+    }
+}
