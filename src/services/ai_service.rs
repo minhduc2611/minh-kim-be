@@ -1,6 +1,7 @@
 use crate::dao::canvas_dao_trait::CanvasRepository;
 use crate::dao::node_dao_trait::NodeRepository;
 use crate::models::canvas::GraphNode;
+use crate::models::node::{InsertNode, InsertRelationship};
 use crate::services::ai_service_trait::{AIServiceError, AIServiceTrait};
 use crate::services::vertex_ai_service::VertexAIService;
 use crate::services::vertex_ai_service_trait::VertexAIRequestConfig;
@@ -289,9 +290,50 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
             })
             .unwrap_or_default();
 
+        let mut new_nodes = Vec::new();
+        let mut new_edges = Vec::new();
+
+        for keyword in &keywords {
+            let keyword_topic = self.node_repository
+                .create_topic(InsertNode {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    canvas_id: request.canvas_id.clone(),
+                    name: keyword.clone(),
+                    node_type: "generated".to_string(),
+                    description: None,
+                    knowledge: None,
+                    position_x: None,
+                    position_y: None,
+                })
+                .await
+                .map_err(|e| AIServiceError::DatabaseError(format!("Failed to create keyword topic: {}", e)))?;
+
+            let keyword_topic_id = keyword_topic.id.clone();
+            new_nodes.push(keyword_topic);
+
+            let relationship_exists = self.node_repository
+                .relationship_exists(&source_topic.id, &keyword_topic_id)
+                .await
+                .map_err(|e| AIServiceError::DatabaseError(format!("Failed to check relationship existence: {}", e)))?;
+
+            if !relationship_exists {
+                let relationship = self.node_repository
+                    .create_relationship(InsertRelationship {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        canvas_id: request.canvas_id.clone(),
+                        source_id: source_topic.id.clone(),
+                        target_id: keyword_topic_id,
+                    })
+                    .await
+                    .map_err(|e| AIServiceError::DatabaseError(format!("Failed to create relationship: {}", e)))?;
+
+                new_edges.push(relationship.id);
+            }
+        }
+
         Ok(GenerateKeywordsResponse {
             keywords,
-            edges: Vec::new(), // For future use
+            edges: new_edges,
         })
     }
 
@@ -302,7 +344,7 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
     ) -> Result<Option<GraphNode>, Box<dyn std::error::Error + Send + Sync>> {
         // Use the new method to get node by name and canvas ID
         self.node_repository
-            .get_node_by_name_and_canvas(name, canvas_id)
+            .get_topic_by_name_and_canvas(name, canvas_id)
             .await
             .map_err(|e| {
                 Box::new(std::io::Error::new(

@@ -71,7 +71,7 @@ impl NodeServiceTrait for NodeService {
         let insert_node: InsertNode = request.into();
         
         // Create node
-        self.repository.create_node(insert_node).await.map_err(|e| match e {
+        self.repository.create_topic(insert_node).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,
@@ -83,7 +83,7 @@ impl NodeServiceTrait for NodeService {
             return Err(NodeServiceError::ValidationError("Node ID cannot be empty".to_string()));
         }
         
-        let node = self.repository.get_node_by_id(id).await.map_err(|e| match e {
+        let node = self.repository.get_topic_by_id(id).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,
@@ -113,7 +113,7 @@ impl NodeServiceTrait for NodeService {
             }
         }
         
-        self.repository.get_nodes(request).await.map_err(|e| match e {
+        self.repository.get_topics(request).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,
@@ -125,7 +125,7 @@ impl NodeServiceTrait for NodeService {
             return Err(NodeServiceError::ValidationError("Canvas ID cannot be empty".to_string()));
         }
         
-        self.repository.get_nodes_by_canvas(canvas_id).await.map_err(|e| match e {
+        self.repository.get_topics_by_canvas(canvas_id).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,
@@ -144,7 +144,7 @@ impl NodeServiceTrait for NodeService {
         // Validate updates
         self.validate_update_request(&updates)?;
         
-        let node = self.repository.update_node(id, updates).await.map_err(|e| match e {
+        let node = self.repository.update_topic(id, updates).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,
@@ -158,7 +158,7 @@ impl NodeServiceTrait for NodeService {
             return Err(NodeServiceError::ValidationError("Node ID cannot be empty".to_string()));
         }
         
-        self.repository.delete_node(id).await.map_err(|e| match e {
+        self.repository.delete_topic(id).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,
@@ -170,7 +170,7 @@ impl NodeServiceTrait for NodeService {
             return Err(NodeServiceError::ValidationError("Canvas ID cannot be empty".to_string()));
         }
         
-        self.repository.delete_nodes_by_canvas(canvas_id).await.map_err(|e| match e {
+        self.repository.delete_topics_by_canvas(canvas_id).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,

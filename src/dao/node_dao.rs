@@ -1,6 +1,6 @@
 use crate::dao::node_dao_trait::{NodeRepository, NodeRepositoryError};
 use crate::database::Database;
-use crate::models::node::{GetNodesRequest, InsertNode, UpdateNodeRequest};
+use crate::models::node::{GetNodesRequest, InsertNode, UpdateNodeRequest, InsertRelationship, Relationship};
 use crate::models::canvas::GraphNode;
 use crate::models::common::PaginatedResponse;
 use async_trait::async_trait;
@@ -19,7 +19,7 @@ impl NodeDao {
 
 #[async_trait]
 impl NodeRepository for NodeDao {
-    async fn create_node(
+    async fn create_topic(
         &self,
         insert_node: InsertNode,
     ) -> Result<GraphNode, NodeRepositoryError> {
@@ -72,7 +72,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_node_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError> {
+    async fn get_topic_by_id(&self, id: &str) -> Result<Option<GraphNode>, NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query("MATCH (n:Topic {id: $id}) RETURN n")
@@ -98,7 +98,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_nodes(
+    async fn get_topics(
         &self,
         request: GetNodesRequest,
     ) -> Result<PaginatedResponse<GraphNode>, NodeRepositoryError> {
@@ -163,7 +163,7 @@ impl NodeRepository for NodeDao {
         Ok(PaginatedResponse::new(nodes, total, limit, offset))
     }
 
-    async fn get_nodes_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, NodeRepositoryError> {
+    async fn get_topics_by_canvas(&self, canvas_id: &str) -> Result<Vec<GraphNode>, NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query(
@@ -194,7 +194,7 @@ impl NodeRepository for NodeDao {
         Ok(nodes)
     }
 
-    async fn update_node(
+    async fn update_topic(
         &self,
         id: &str,
         updates: UpdateNodeRequest,
@@ -236,7 +236,7 @@ impl NodeRepository for NodeDao {
         }
 
         if set_clauses.is_empty() {
-            return self.get_node_by_id(id).await;
+            return self.get_topic_by_id(id).await;
         }
 
         let cypher_str = format!(
@@ -271,7 +271,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn delete_node(&self, id: &str) -> Result<(), NodeRepositoryError> {
+    async fn delete_topic(&self, id: &str) -> Result<(), NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query(
@@ -307,7 +307,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn delete_nodes_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError> {
+    async fn delete_topics_by_canvas(&self, canvas_id: &str) -> Result<(), NodeRepositoryError> {
         let graph = self.database.get_graph();
 
         let cypher = query(
@@ -339,7 +339,7 @@ impl NodeRepository for NodeDao {
         }
     }
 
-    async fn get_node_by_name_and_canvas(
+    async fn get_topic_by_name_and_canvas(
         &self,
         name: &str,
         canvas_id: &str,
@@ -478,6 +478,108 @@ impl NodeRepository for NodeDao {
             Ok(Vec::new())
         }
     }
+
+
+    async fn relationship_exists(
+        &self,
+        source_id: &str,
+        target_id: &str,
+    ) -> Result<bool, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (s:Topic {id: $source_id})-[r:RELATED_TO]->(t:Topic {id: $target_id})
+             RETURN COUNT(r) > 0 AS exists",
+        )
+        .param("source_id", source_id)
+        .param("target_id", target_id);
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let exists = row
+                .get::<bool>("exists")
+                .map_err(|e| NodeRepositoryError::InvalidData(e.to_string()))?;
+
+            Ok(exists)
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn create_relationship(
+        &self,
+        insert_relationship: InsertRelationship,
+    ) -> Result<Relationship, NodeRepositoryError> {
+        let graph = self.database.get_graph();
+
+        let cypher = query(
+            "MATCH (source:Topic {id: $source_id})
+             MATCH (target:Topic {id: $target_id})
+             CREATE (source)-[r:RELATED_TO {
+               id: $id,
+               canvasId: $canvas_id,
+               sourceId: $source_id,
+               targetId: $target_id,
+               createdAt: datetime()
+             }]->(target)
+             RETURN r.id AS id, r.canvasId AS canvasId, r.sourceId AS sourceId, r.targetId AS targetId, r.createdAt AS createdAt",
+        )
+        .param("id", insert_relationship.id.clone())
+        .param("canvas_id", insert_relationship.canvas_id.clone())
+        .param("source_id", insert_relationship.source_id.clone())
+        .param("target_id", insert_relationship.target_id.clone());
+
+        let mut result = graph
+            .execute(cypher)
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
+        {
+            let id = row
+                .get::<String>("id")
+                .map_err(|e| NodeRepositoryError::InvalidData(format!("id: {}", e)))?;
+
+            let canvas_id = row
+                .get::<String>("canvasId")
+                .map_err(|e| NodeRepositoryError::InvalidData(format!("canvasId: {}", e)))?;
+
+            let source_id = row
+                .get::<String>("sourceId")
+                .map_err(|e| NodeRepositoryError::InvalidData(format!("sourceId: {}", e)))?;
+
+            let target_id = row
+                .get::<String>("targetId")
+                .map_err(|e| NodeRepositoryError::InvalidData(format!("targetId: {}", e)))?;
+
+            let created_at_raw = row
+                .get::<String>("createdAt")
+                .map_err(|e| NodeRepositoryError::InvalidData(format!("createdAt: {}", e)))?;
+
+            Ok(Relationship {
+                id,
+                canvas_id,
+                source_id,
+                target_id,
+                created_at: Self::parse_neo4j_datetime(&created_at_raw)?,
+            })
+        } else {
+            Err(NodeRepositoryError::DatabaseError(
+                "Failed to create relationship".to_string(),
+            ))
+        }
+    }
 }
 
 impl NodeDao {
@@ -507,6 +609,13 @@ impl NodeDao {
             knowledge,
             position_x,
             position_y,
+        })
+    }
+
+    fn parse_neo4j_datetime(datetime_str: &str) -> Result<chrono::DateTime<chrono::Utc>, NodeRepositoryError> {
+        // Neo4j datetime() returns ISO 8601 format that chrono can parse
+        datetime_str.parse::<chrono::DateTime<chrono::Utc>>().map_err(|e| {
+            NodeRepositoryError::InvalidData(format!("Failed to parse datetime: {}", e))
         })
     }
 } 

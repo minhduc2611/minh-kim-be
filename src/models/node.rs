@@ -41,6 +41,23 @@ pub struct InsertNode {
     pub position_y: Option<f64>,
 }
 
+#[derive(Debug)]
+pub struct InsertRelationship {
+    pub id: String,
+    pub canvas_id: String,
+    pub source_id: String,
+    pub target_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Relationship {
+    pub id: String,
+    pub canvas_id: String,
+    pub source_id: String,
+    pub target_id: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
 impl From<CreateNodeRequest> for InsertNode {
     fn from(req: CreateNodeRequest) -> Self {
         Self {
