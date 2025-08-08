@@ -68,6 +68,20 @@ pub async fn get_node_list(
             "message": "No nodes found for this canvas",
             "error": null
         }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
     }
 }
 
@@ -109,6 +123,76 @@ pub async fn create_node(
             "pagination": null,
             "message": "Node not found",
             "error": "NotFound"
+        }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
         }))),
     }
 }
@@ -154,6 +238,20 @@ pub async fn get_node(
                 "message": msg,
                 "error": "DatabaseError"
             }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
     }
 }
 
@@ -199,6 +297,20 @@ pub async fn update_node(
                 "message": msg,
                 "error": "DatabaseError"
             }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
     }
 }
 
@@ -243,6 +355,20 @@ pub async fn delete_node(
                 "message": msg,
                 "error": "DatabaseError"
             }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
     }
 }
 
@@ -287,6 +413,20 @@ pub async fn get_nodes_by_canvas(
                 "message": msg,
                 "error": "DatabaseError"
             }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
     }
 }
 
@@ -331,5 +471,19 @@ pub async fn delete_nodes_by_canvas(
                 "message": msg,
                 "error": "DatabaseError"
             }))),
+        Err(NodeServiceError::TopicAlreadyExists) => Ok(HttpResponse::Conflict().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Topic already exists in this canvas",
+            "error": "TopicAlreadyExists"
+        }))),
+        Err(NodeServiceError::CanvasNotFound) => Ok(HttpResponse::NotFound().json(json!({
+            "success": false,
+            "data": null,
+            "pagination": null,
+            "message": "Canvas not found",
+            "error": "CanvasNotFound"
+        }))),
     }
 } 

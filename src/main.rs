@@ -91,7 +91,7 @@ async fn main() -> std::io::Result<()> {
 
     let node_repository: Arc<dyn NodeRepository> = Arc::new(NodeDao::new(database.clone()));
     let node_service: Arc<dyn NodeServiceTrait> =
-        Arc::new(NodeService::new(node_repository.clone()));
+        Arc::new(NodeService::new(node_repository.clone(), canvas_repository.clone()));
 
     // Set up Vertex AI service
     let vertex_ai_service: Arc<dyn VertexAIServiceTrait> = Arc::new(VertexAIService::new(None));

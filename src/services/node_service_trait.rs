@@ -11,6 +11,10 @@ pub enum NodeServiceError {
     ValidationError(String),
     #[error("Node not found")]
     NotFound,
+    #[error("Topic already exists in this canvas")]
+    TopicAlreadyExists,
+    #[error("Canvas not found")]
+    CanvasNotFound,
 }
 
 #[async_trait]

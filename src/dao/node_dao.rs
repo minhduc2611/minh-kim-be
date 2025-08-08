@@ -4,6 +4,7 @@ use crate::models::node::{GetNodesRequest, InsertNode, UpdateNodeRequest, Insert
 use crate::models::canvas::GraphNode;
 use crate::models::common::PaginatedResponse;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use neo4rs::query;
 use std::collections::HashMap;
 
@@ -522,15 +523,15 @@ impl NodeRepository for NodeDao {
 
         let cypher = query(
             "MATCH (source:Topic {id: $source_id})
-             MATCH (target:Topic {id: $target_id})
-             CREATE (source)-[r:RELATED_TO {
-               id: $id,
-               canvasId: $canvas_id,
-               sourceId: $source_id,
-               targetId: $target_id,
-               createdAt: datetime()
-             }]->(target)
-             RETURN r.id AS id, r.canvasId AS canvasId, r.sourceId AS sourceId, r.targetId AS targetId, r.createdAt AS createdAt",
+            MATCH (target:Topic {id: $target_id})
+            CREATE (source)-[r:RELATED_TO {
+            id: $id,
+            canvasId: $canvas_id,
+            sourceId: $source_id,
+            targetId: $target_id,
+            createdAt: datetime()
+            }]->(target)
+            RETURN r",
         )
         .param("id", insert_relationship.id.clone())
         .param("canvas_id", insert_relationship.canvas_id.clone())
@@ -547,24 +548,30 @@ impl NodeRepository for NodeDao {
             .await
             .map_err(|e| NodeRepositoryError::DatabaseError(e.to_string()))?
         {
-            let id = row
+            // Get the relation from the row
+            let relation = row
+                .get::<neo4rs::Relation>("r")
+                .map_err(|e| NodeRepositoryError::InvalidData(format!("relation: {}", e)))?;
+            
+            // Extract properties from the relation
+            let id = relation
                 .get::<String>("id")
                 .map_err(|e| NodeRepositoryError::InvalidData(format!("id: {}", e)))?;
 
-            let canvas_id = row
+            let canvas_id = relation
                 .get::<String>("canvasId")
                 .map_err(|e| NodeRepositoryError::InvalidData(format!("canvasId: {}", e)))?;
 
-            let source_id = row
+            let source_id = relation
                 .get::<String>("sourceId")
                 .map_err(|e| NodeRepositoryError::InvalidData(format!("sourceId: {}", e)))?;
 
-            let target_id = row
+            let target_id = relation
                 .get::<String>("targetId")
                 .map_err(|e| NodeRepositoryError::InvalidData(format!("targetId: {}", e)))?;
 
-            let created_at_raw = row
-                .get::<String>("createdAt")
+            let created_at = relation
+                .get::<chrono::DateTime<chrono::Utc>>("createdAt")
                 .map_err(|e| NodeRepositoryError::InvalidData(format!("createdAt: {}", e)))?;
 
             Ok(Relationship {
@@ -572,7 +579,7 @@ impl NodeRepository for NodeDao {
                 canvas_id,
                 source_id,
                 target_id,
-                created_at: Self::parse_neo4j_datetime(&created_at_raw)?,
+                created_at,
             })
         } else {
             Err(NodeRepositoryError::DatabaseError(
@@ -612,10 +619,5 @@ impl NodeDao {
         })
     }
 
-    fn parse_neo4j_datetime(datetime_str: &str) -> Result<chrono::DateTime<chrono::Utc>, NodeRepositoryError> {
-        // Neo4j datetime() returns ISO 8601 format that chrono can parse
-        datetime_str.parse::<chrono::DateTime<chrono::Utc>>().map_err(|e| {
-            NodeRepositoryError::InvalidData(format!("Failed to parse datetime: {}", e))
-        })
-    }
+
 } 

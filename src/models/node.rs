@@ -5,6 +5,7 @@ use uuid::Uuid;
 pub struct CreateNodeRequest {
     pub name: String,
     pub canvas_id: String,
+    pub parent_node_id: Option<String>,
     pub node_type: Option<String>,
     pub description: Option<String>,
     pub knowledge: Option<String>,

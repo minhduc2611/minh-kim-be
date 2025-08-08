@@ -1,5 +1,6 @@
 use crate::dao::node_dao_trait::{NodeRepository, NodeRepositoryError};
-use crate::models::node::{CreateNodeRequest, GetNodesRequest, UpdateNodeRequest, InsertNode};
+use crate::dao::canvas_dao_trait::{CanvasRepository, CanvasRepositoryError};
+use crate::models::node::{CreateNodeRequest, GetNodesRequest, UpdateNodeRequest, InsertNode, InsertRelationship};
 use crate::models::canvas::GraphNode;
 use crate::models::common::PaginatedResponse;
 use crate::services::node_service_trait::{NodeServiceError, NodeServiceTrait};
@@ -8,11 +9,15 @@ use std::sync::Arc;
 
 pub struct NodeService {
     repository: Arc<dyn NodeRepository>,
+    canvas_repository: Arc<dyn CanvasRepository>,
 }
 
 impl NodeService {
-    pub fn new(repository: Arc<dyn NodeRepository>) -> Self {
-        Self { repository }
+    pub fn new(repository: Arc<dyn NodeRepository>, canvas_repository: Arc<dyn CanvasRepository>) -> Self {
+        Self { 
+            repository,
+            canvas_repository,
+        }
     }
 
     fn validate_create_request(&self, request: &CreateNodeRequest) -> Result<(), NodeServiceError> {
@@ -67,15 +72,70 @@ impl NodeServiceTrait for NodeService {
         // Validate request
         self.validate_create_request(&request)?;
         
-        // Convert to insert model
-        let insert_node: InsertNode = request.into();
+        // Check if canvas exists
+        let canvas = self.canvas_repository.get_canvas_by_id(&request.canvas_id).await
+            .map_err(|e| match e {
+                CanvasRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
+                CanvasRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
+                CanvasRepositoryError::NotFound => NodeServiceError::CanvasNotFound,
+            })?;
+        
+        if canvas.is_none() {
+            return Err(NodeServiceError::CanvasNotFound);
+        }
+        
+        // Check if topic already exists
+        let existing_topic = self.repository.get_topic_node_by_name_and_canvas(&request.name, &request.canvas_id).await
+            .map_err(|e| match e {
+                NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
+                NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
+                NodeRepositoryError::NotFound => NodeServiceError::NotFound,
+            })?;
+        
+        if existing_topic.is_some() {
+            return Err(NodeServiceError::TopicAlreadyExists);
+        }
+        
+        // Determine node type based on parent_node_id
+        let node_type = if request.parent_node_id.is_some() {
+            "generated".to_string()
+        } else {
+            request.node_type.clone().unwrap_or_else(|| "original".to_string())
+        };
+        
+        // Store values before moving request
+        let canvas_id = request.canvas_id.clone();
+        let parent_node_id = request.parent_node_id.clone();
+        
+        // Convert to insert model with updated node type
+        let mut insert_node: InsertNode = request.into();
+        insert_node.node_type = node_type;
         
         // Create node
-        self.repository.create_topic_node(insert_node).await.map_err(|e| match e {
+        let new_node = self.repository.create_topic_node(insert_node).await.map_err(|e| match e {
             NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
             NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
             NodeRepositoryError::NotFound => NodeServiceError::NotFound,
-        })
+        })?;
+        
+        // Create relationship if parent node is specified
+        if let Some(parent_node_id) = parent_node_id {
+            let relationship = InsertRelationship {
+                id: uuid::Uuid::new_v4().to_string(),
+                canvas_id: canvas_id,
+                source_id: parent_node_id,
+                target_id: new_node.id.clone(),
+            };
+            
+            self.repository.create_relationship(relationship).await
+                .map_err(|e| match e {
+                    NodeRepositoryError::DatabaseError(msg) => NodeServiceError::DatabaseError(msg),
+                    NodeRepositoryError::InvalidData(msg) => NodeServiceError::ValidationError(msg),
+                    NodeRepositoryError::NotFound => NodeServiceError::NotFound,
+                })?;
+        }
+        
+        Ok(new_node)
     }
 
     async fn get_node_by_id(&self, id: &str) -> Result<GraphNode, NodeServiceError> {
