@@ -134,11 +134,12 @@ async fn main() -> std::io::Result<()> {
     println!("Connected to Neo4j database successfully!");
     println!("App is listening at port: http://{}:{}", host, port);
 
+    let domain_url = std::env::var("DOMAIN_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     HttpServer::new(move || {
         App::new()
             .wrap(
                 Cors::default()
-                    .allowed_origin("https://minh-kim-be-566310375218.europe-north1.run.app")
+                    .allowed_origin(&domain_url)
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                     .allowed_headers(vec!["Content-Type", "Authorization"])
                     .supports_credentials(),
