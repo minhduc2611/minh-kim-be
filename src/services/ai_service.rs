@@ -2,10 +2,12 @@ use crate::dao::canvas_dao_trait::CanvasRepository;
 use crate::dao::node_dao_trait::NodeRepository;
 use crate::models::canvas::GraphNode;
 use crate::models::node::{InsertNode, InsertRelationship};
-use crate::models::common::{GenerateInsightsRequest, GenerateInsightsResponse};
+use crate::models::common::{GenerateInsightsRequest, GenerateInsightsResponse, GenerateInsightsForTopicNodeRequest, GenerateInsightsForTopicNodeResponse, SearchResult, DocumentContext};
 use crate::services::ai_service_trait::{AIServiceError, AIServiceTrait};
 use crate::services::vertex_ai_service::VertexAIService;
 use crate::services::vertex_ai_service_trait::VertexAIRequestConfig;
+use crate::services::internet_search_trait::{InternetSearchTrait, SearchRequest as InternetSearchRequest, NewsSearchRequest};
+use crate::services::weaviate_client::WeaviateClient;
 use async_trait::async_trait;
 use google_cloud_aiplatform_v1::model::{Schema, Type};
 use serde::{Deserialize, Serialize};
@@ -29,7 +31,7 @@ pub struct GenerateKeywordsResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct SearchResult {
+struct LocalSearchResult {
     filename: String,
     text: String,
 }
@@ -38,6 +40,8 @@ pub struct AIService {
     canvas_repository: Arc<dyn CanvasRepository + Send + Sync>,
     node_repository: Arc<dyn NodeRepository + Send + Sync>,
     vertex_ai_service: VertexAIService,
+    internet_search_service: Option<Arc<dyn InternetSearchTrait + Send + Sync>>,
+    weaviate_client: Option<WeaviateClient>,
 }
 
 impl AIService {
@@ -50,6 +54,8 @@ impl AIService {
             canvas_repository,
             node_repository,
             vertex_ai_service,
+            internet_search_service: None,
+            weaviate_client: None,
         }
     }
 
@@ -96,7 +102,7 @@ impl AIService {
             .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
 
         // Search for relevant document chunks using Weaviate (placeholder for now)
-        let relevant_chunks: Vec<SearchResult> = Vec::new(); // TODO: Implement Weaviate search
+        let relevant_chunks: Vec<LocalSearchResult> = Vec::new(); // TODO: Implement Weaviate search
 
         // Build the prompt for AI
         let system_instruction_section = if !canvas.system_instruction.is_empty() {
@@ -472,6 +478,265 @@ When given a search query, provide detailed, informative explanations.
         Ok(response)
     }
 
+    pub async fn generate_insights_for_topic_node(
+        &self,
+        request: GenerateInsightsForTopicNodeRequest,
+    ) -> Result<GenerateInsightsForTopicNodeResponse, AIServiceError> {
+        // Get the topic node by ID
+        let topic_node = self
+            .node_repository
+            .get_topic_node_by_id(&request.topic_node_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(format!("Failed to get topic node: {}", e)))?
+            .ok_or_else(|| AIServiceError::TopicNotFound(request.topic_node_id.clone()))?;
+
+        let topic_path = self
+            .get_topic_path(&topic_node.id, &request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
+
+        let _existing_siblings = self
+            .get_existing_siblings(&topic_node.id, &request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
+
+        let _topic_children = self
+            .get_topic_children(&topic_node.id, &request.canvas_id)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(e.to_string()))?;
+
+        // Build system instruction section
+        let system_instruction_section = if let Some(system_instruction) = &request.system_instruction {
+            format!(
+                "<system-instruction>\n{}\n</system-instruction>",
+                system_instruction
+            )
+        } else {
+            String::from(
+                r#"<system-instruction>
+You are an AI assistant providing comprehensive insights, analysis, and real world examples. 
+When given a search query, provide detailed, informative explanations.
+</system-instruction>"#
+            )
+        };
+
+        // Build topic path section
+        let topic_path_section = if !topic_path.is_empty() {
+            format!(
+                "<topic-path>\n{}\n</topic-path>",
+                topic_path.join(" > ")
+            )
+        } else {
+            String::new()
+        };
+
+        // Search for document context using Weaviate if available
+        let mut document_context = Vec::new();
+        if let Some(weaviate_client) = &self.weaviate_client {
+            let search_request = crate::services::weaviate_client::WeaviateSearchRequest {
+                query: topic_node.name.clone(),
+                class_name: "Document".to_string(),
+                limit: Some(5),
+                distance: Some(0.7),
+                additional_properties: Some(vec!["content".to_string(), "filename".to_string(), "description".to_string()]),
+            };
+
+            match weaviate_client.search(search_request).await {
+                Ok(results) => {
+                    document_context = results
+                        .iter()
+                        .map(|result| DocumentContext {
+                            filename: result.properties["filename"].as_str().unwrap_or("").to_string(),
+                            chunk_id: result.id.clone(),
+                            name: result.properties["title"].as_str().unwrap_or("").to_string(),
+                            description: result.properties["description"].as_str().unwrap_or("").to_string(),
+                            text: result.properties["content"].as_str().unwrap_or("").to_string(),
+                            score: result.score,
+                        })
+                        .collect();
+                }
+                Err(e) => {
+                    eprintln!("Weaviate search failed: {}", e);
+                }
+            }
+        }
+
+        // Build document context section
+        let document_context_section = if !document_context.is_empty() {
+            let context_text = document_context
+                .iter()
+                .enumerate()
+                .map(|(index, doc)| {
+                    let relevance_score = ((1.0 - doc.score) * 100.0).round() as i32;
+                    format!(
+                        "Document {}: {} - {}\nDescription: {}\nRelevance Score: {}%\nContent: {}\n---",
+                        index + 1,
+                        doc.filename,
+                        doc.name,
+                        doc.description,
+                        relevance_score,
+                        doc.text
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            format!(
+                "<user-documents>\n{}\n</user-documents>",
+                context_text
+            )
+        } else {
+            String::new()
+        };
+
+        // Perform web search if requested
+        let mut web_search_results: Option<Vec<SearchResult>> = None;
+        let mut news_search_results: Option<Vec<SearchResult>> = None;
+
+        if request.include_web_search.unwrap_or(false) {
+            if let Some(search_service) = &self.internet_search_service {
+                let search_request = InternetSearchRequest {
+                    query: format!("{} {}", topic_node.name, chrono::Utc::now().year()),
+                    max_results: request.max_results,
+                    search_depth: Some("basic".to_string()),
+                    include_raw_content: Some(false),
+                };
+
+                match search_service.search(search_request).await {
+                    Ok(results) => {
+                        web_search_results = Some(results.into_iter().map(|result| SearchResult {
+                            title: result.title,
+                            url: result.url,
+                            content: result.content,
+                            published_date: result.published_date,
+                        }).collect());
+                    }
+                    Err(e) => {
+                        eprintln!("Web search failed: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Perform news search if requested
+        if request.include_news_search.unwrap_or(false) {
+            if let Some(search_service) = &self.internet_search_service {
+                let news_request = NewsSearchRequest {
+                    query: topic_node.name.clone(),
+                    max_results: request.max_results,
+                    time_period: Some("7d".to_string()),
+                };
+
+                match search_service.search_latest_news(news_request).await {
+                    Ok(results) => {
+                        news_search_results = Some(results.into_iter().map(|result| SearchResult {
+                            title: result.title,
+                            url: result.url,
+                            content: result.content,
+                            published_date: result.published_date,
+                        }).collect());
+                    }
+                    Err(e) => {
+                        eprintln!("News search failed: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Build web search results section
+        let web_search_section = if let Some(ref results) = web_search_results {
+            let results_json = results
+                .iter()
+                .map(|result| serde_json::json!({
+                    "title": result.title,
+                    "link": result.url,
+                    "knowledge": result.content,
+                }))
+                .collect::<Vec<_>>();
+
+            format!(
+                "<web-search-results>\n{}\n</web-search-results>",
+                serde_json::to_string_pretty(&results_json)
+                    .map_err(|e| AIServiceError::InvalidResponseFormat(format!("Failed to serialize web search results: {}", e)))?
+            )
+        } else {
+            String::new()
+        };
+
+        // Build the complete instructions
+        let instructions = format!(
+            r#"<instructions>
+{}
+{}
+{}
+{}
+<format>
+    Using Markdown format when appropriate.
+    ALWAYS reference and prioritize information from user documents when available and relevant.
+    Also incorporate relevant information from web search results.
+    If user documents contain relevant information, mention them specifically in your response.
+    Current time: {}
+</format>
+</instructions>"#,
+            system_instruction_section,
+            topic_path_section,
+            document_context_section,
+            web_search_section,
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+        );
+
+        // Create Vertex AI request config
+        let request_config = VertexAIRequestConfig {
+            model_id: "gemini-2.5-pro".to_string(),
+            agent_key: None,
+            system_prompt: Some(instructions.clone()),
+            include_thoughts: false,
+            use_google_search: false,
+            use_retrieval: false,
+            response_schema: None,
+        };
+
+        // Generate content using Vertex AI
+        let question = request.question.unwrap_or_else(|| format!("Provide comprehensive insights about: {}", topic_node.name));
+        let response_text = self
+            .vertex_ai_service
+            .generate_content(
+                &format!("Provide a comprehensive analysis of: {}", question),
+                Some(request_config),
+            )
+            .await
+            .map_err(|e| AIServiceError::AIServiceError(format!("AI service error: {}", e)))?;
+
+        // Create the response
+        let response = GenerateInsightsForTopicNodeResponse {
+            insights: response_text,
+            topic_node_id: request.topic_node_id.clone(),
+            canvas_id: request.canvas_id.clone(),
+            question,
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            web_search_results,
+            news_search_results,
+            document_context: if document_context.is_empty() { None } else { Some(document_context) },
+        };
+
+        // // Save to neo4j - combine with existing knowledge
+        // const updatedKnowledge = {
+        //     ...currentKnowledge,
+        //     googleSearchStatus: "completed",
+        //     latestGoogleSearch: finalResult,
+        //     searchHistory: [
+        //       ...(currentKnowledge.searchHistory || []),
+        //       finalResult
+        //     ].slice(-5) // Keep only last 5 searches
+        //   };
+  
+        //   await neo4jStorage.updateTopic(sourceTopic.id, {
+        //     knowledge: JSON.stringify(updatedKnowledge)
+        //   });
+
+        Ok(response)
+    }
+
     async fn get_topic_by_name_and_canvas(
         &self,
         name: &str,
@@ -552,5 +817,12 @@ impl AIServiceTrait for AIService {
         request: GenerateInsightsRequest,
     ) -> Result<GenerateInsightsResponse, AIServiceError> {
         self.generate_insights(request).await
+    }
+
+    async fn generate_insights_for_topic_node(
+        &self,
+        request: GenerateInsightsForTopicNodeRequest,
+    ) -> Result<GenerateInsightsForTopicNodeResponse, AIServiceError> {
+        self.generate_insights_for_topic_node(request).await
     }
 }

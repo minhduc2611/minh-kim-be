@@ -22,3 +22,8 @@ pub mod agents_service;
 
 pub mod ai_service;
 pub mod ai_service_trait;
+
+pub mod internet_search_trait;
+pub mod tavily_search_service;
+pub mod serper_search_service;
+pub mod weaviate_client;

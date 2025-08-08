@@ -102,6 +102,7 @@ jobs:
               STRIPE_PUBLIC_KEY=STRIPE_PUBLIC_KEY:latest
               STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest
               TAVILY_API_KEY=TAVILY_API_KEY:latest
+              SERPER_API_KEY=SERPER_API_KEY:latest
               NOTION_INTEGRATION_API_KEY=NOTION_INTEGRATION_API_KEY:latest
               NOTION_FEEDBACK_DATABASE_ID=NOTION_FEEDBACK_DATABASE_ID:latest
       - name: 'Show output'

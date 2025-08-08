@@ -98,3 +98,37 @@ pub struct GenerateInsightsResponse {
     pub question: String,
     pub generated_at: String,
 }
+
+/// Request for generating insights for a specific topic node
+#[derive(Debug, Deserialize)]
+pub struct GenerateInsightsForTopicNodeRequest {
+    pub topic_node_id: String,
+    pub canvas_id: String,
+    pub question: Option<String>,
+    pub system_instruction: Option<String>,
+    pub max_results: Option<i32>,
+    pub include_web_search: Option<bool>,
+    pub include_news_search: Option<bool>,
+}
+
+/// Response for generating insights for a topic node
+#[derive(Debug, Serialize)]
+pub struct GenerateInsightsForTopicNodeResponse {
+    pub insights: String,
+    pub topic_node_id: String,
+    pub canvas_id: String,
+    pub question: String,
+    pub generated_at: String,
+    pub web_search_results: Option<Vec<SearchResult>>,
+    pub news_search_results: Option<Vec<SearchResult>>,
+    pub document_context: Option<Vec<DocumentContext>>,
+}
+
+/// Search result for web and news searches
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SearchResult {
+    pub title: String,
+    pub url: String,
+    pub content: String,
+    pub published_date: Option<String>,
+}

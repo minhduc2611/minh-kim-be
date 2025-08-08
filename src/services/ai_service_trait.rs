@@ -1,5 +1,5 @@
 use crate::services::ai_service::{GenerateKeywordsRequest, GenerateKeywordsResponse};
-use crate::models::common::{GenerateInsightsRequest, GenerateInsightsResponse};
+use crate::models::common::{GenerateInsightsRequest, GenerateInsightsResponse, GenerateInsightsForTopicNodeRequest, GenerateInsightsForTopicNodeResponse};
 use async_trait::async_trait;
 
 #[derive(Debug, thiserror::Error)]
@@ -18,6 +18,8 @@ pub enum AIServiceError {
     InvalidResponseFormat(String),
     #[error("Search service error: {0}")]
     SearchServiceError(String),
+    #[error("Weaviate error: {0}")]
+    WeaviateError(String),
 }
 
 #[async_trait]
@@ -53,4 +55,20 @@ pub trait AIServiceTrait: Send + Sync {
         &self,
         request: GenerateInsightsRequest,
     ) -> Result<GenerateInsightsResponse, AIServiceError>;
+
+    /// Generate comprehensive insights for a specific topic node using AI with web search, news search, and document context
+    /// 
+    /// This method takes a topic node ID and canvas ID, then uses AI to generate
+    /// comprehensive insights by combining web search results, news search results, and document context.
+    /// 
+    /// # Arguments
+    /// * `request` - The request containing topic node ID, canvas ID, and generation parameters
+    /// 
+    /// # Returns
+    /// * `Ok(GenerateInsightsForTopicNodeResponse)` - Successfully generated insights
+    /// * `Err(AIServiceError)` - Error during insights generation
+    async fn generate_insights_for_topic_node(
+        &self,
+        request: GenerateInsightsForTopicNodeRequest,
+    ) -> Result<GenerateInsightsForTopicNodeResponse, AIServiceError>;
 }
