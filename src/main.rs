@@ -184,6 +184,7 @@ async fn main() -> std::io::Result<()> {
             // AI endpoints
             .service(ai_controller::generate_ai_content)
             .service(ai_controller::generate_keywords)
+            .service(ai_controller::generate_insights)
     })
     .bind((host, port))?
     .run()

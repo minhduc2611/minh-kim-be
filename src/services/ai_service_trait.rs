@@ -1,4 +1,5 @@
 use crate::services::ai_service::{GenerateKeywordsRequest, GenerateKeywordsResponse};
+use crate::models::common::{GenerateInsightsRequest, GenerateInsightsResponse};
 use async_trait::async_trait;
 
 #[derive(Debug, thiserror::Error)]
@@ -15,6 +16,8 @@ pub enum AIServiceError {
     AIServiceError(String),
     #[error("Invalid response format: {0}")]
     InvalidResponseFormat(String),
+    #[error("Search service error: {0}")]
+    SearchServiceError(String),
 }
 
 #[async_trait]
@@ -34,4 +37,20 @@ pub trait AIServiceTrait: Send + Sync {
         &self,
         request: GenerateKeywordsRequest,
     ) -> Result<GenerateKeywordsResponse, AIServiceError>;
+
+    /// Generate comprehensive insights using AI with web search and document context
+    /// 
+    /// This method takes a question and optional context, then uses AI to generate
+    /// comprehensive insights by combining web search results and document context.
+    /// 
+    /// # Arguments
+    /// * `request` - The request containing question, system instruction, topic path, and document context
+    /// 
+    /// # Returns
+    /// * `Ok(GenerateInsightsResponse)` - Successfully generated insights
+    /// * `Err(AIServiceError)` - Error during insights generation
+    async fn generate_insights(
+        &self,
+        request: GenerateInsightsRequest,
+    ) -> Result<GenerateInsightsResponse, AIServiceError>;
 }

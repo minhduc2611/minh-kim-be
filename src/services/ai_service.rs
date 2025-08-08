@@ -2,6 +2,7 @@ use crate::dao::canvas_dao_trait::CanvasRepository;
 use crate::dao::node_dao_trait::NodeRepository;
 use crate::models::canvas::GraphNode;
 use crate::models::node::{InsertNode, InsertRelationship};
+use crate::models::common::{GenerateInsightsRequest, GenerateInsightsResponse};
 use crate::services::ai_service_trait::{AIServiceError, AIServiceTrait};
 use crate::services::vertex_ai_service::VertexAIService;
 use crate::services::vertex_ai_service_trait::VertexAIRequestConfig;
@@ -9,6 +10,7 @@ use async_trait::async_trait;
 use google_cloud_aiplatform_v1::model::{Schema, Type};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use chrono::{Datelike, Utc};
 
 use std::sync::Arc;
 
@@ -337,6 +339,139 @@ You will be given a 'topic', its hierarchical 'topicPath', existing 'children' (
         })
     }
 
+    pub async fn generate_insights(
+        &self,
+        request: GenerateInsightsRequest,
+    ) -> Result<GenerateInsightsResponse, AIServiceError> {
+        // Build system instruction section
+        let system_instruction_section = if let Some(system_instruction) = &request.system_instruction {
+            format!(
+                "<system-instruction>\n{}\n</system-instruction>",
+                system_instruction
+            )
+        } else {
+            String::from(
+                r#"<system-instruction>
+You are an AI assistant providing comprehensive insights, analysis, and real world examples. 
+When given a search query, provide detailed, informative explanations.
+</system-instruction>"#
+            )
+        };
+
+        // Build topic path section
+        let topic_path_section = if let Some(topic_path) = &request.topic_path {
+            format!(
+                "<topic-path>\n{}\n</topic-path>",
+                topic_path
+            )
+        } else {
+            String::new()
+        };
+
+        // Build document context section
+        let document_context_section = if let Some(document_context) = &request.document_context {
+            if !document_context.is_empty() {
+                let context_text = document_context
+                    .iter()
+                    .enumerate()
+                    .map(|(index, doc)| {
+                        let relevance_score = ((1.0 - doc.score) * 100.0).round() as i32;
+                        format!(
+                            "Document {}: {} - {}\nDescription: {}\nRelevance Score: {}%\nContent: {}\n---",
+                            index + 1,
+                            doc.filename,
+                            doc.name,
+                            doc.description,
+                            relevance_score,
+                            doc.text
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                format!(
+                    "<user-documents>\n{}\n</user-documents>",
+                    context_text
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        // Get current year for search query
+        let current_year = chrono::Utc::now().year();
+
+        // For now, we'll use a placeholder for web search results
+        // In a real implementation, you would integrate with Tavily or similar search service
+        let web_search_results = vec![
+            serde_json::json!({
+                "title": "Sample search result",
+                "link": "https://example.com",
+                "knowledge": "This is a placeholder for web search results. In production, this would be populated with actual search results from Tavily or similar service."
+            })
+        ];
+
+        let web_search_section = format!(
+            "<web-search-results>\n{}\n</web-search-results>",
+            serde_json::to_string_pretty(&web_search_results)
+                .map_err(|e| AIServiceError::InvalidResponseFormat(format!("Failed to serialize web search results: {}", e)))?
+        );
+
+        // Build the complete instructions
+        let instructions = format!(
+            r#"<instructions>
+{}
+{}
+{}
+{}
+<format>
+    Using Markdown format when appropriate.
+    ALWAYS reference and prioritize information from user documents when available and relevant.
+    Also incorporate relevant information from web search results.
+    If user documents contain relevant information, mention them specifically in your response.
+    Current time: {}
+</format>
+</instructions>"#,
+            system_instruction_section,
+            topic_path_section,
+            document_context_section,
+            web_search_section,
+            current_year,
+        );
+
+        // Create Vertex AI request config with Google Search enabled
+        let request_config = VertexAIRequestConfig {
+            model_id: "gemini-2.5-pro".to_string(),
+            agent_key: None,
+            system_prompt: Some(instructions.clone()),
+            include_thoughts: false,
+            use_google_search: true,
+            use_retrieval: false,
+            response_schema: None,
+        };
+
+        // Generate content using Vertex AI
+        let response_text = self
+            .vertex_ai_service
+            .generate_content(
+                &format!("Provide a comprehensive analysis of: {}", request.question),
+                Some(request_config),
+            )
+            .await
+            .map_err(|e| AIServiceError::AIServiceError(format!("AI service error: {}", e)))?;
+
+        // Create the response
+        let response = GenerateInsightsResponse {
+            insights: response_text,
+            question: request.question.clone(),
+            generated_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        Ok(response)
+    }
+
     async fn get_topic_by_name_and_canvas(
         &self,
         name: &str,
@@ -410,5 +545,12 @@ impl AIServiceTrait for AIService {
         request: GenerateKeywordsRequest,
     ) -> Result<GenerateKeywordsResponse, AIServiceError> {
         self.generate_keywords(request).await
+    }
+
+    async fn generate_insights(
+        &self,
+        request: GenerateInsightsRequest,
+    ) -> Result<GenerateInsightsResponse, AIServiceError> {
+        self.generate_insights(request).await
     }
 }

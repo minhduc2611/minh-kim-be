@@ -70,3 +70,31 @@ pub struct ListNodeQuery {
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
+
+/// Document context for AI insights generation
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DocumentContext {
+    pub filename: String,
+    pub chunk_id: String,
+    pub name: String,
+    pub description: String,
+    pub text: String,
+    pub score: f64,
+}
+
+/// Request for generating insights
+#[derive(Debug, Deserialize)]
+pub struct GenerateInsightsRequest {
+    pub question: String,
+    pub system_instruction: Option<String>,
+    pub topic_path: Option<String>,
+    pub document_context: Option<Vec<DocumentContext>>,
+}
+
+/// Response for generating insights
+#[derive(Debug, Serialize)]
+pub struct GenerateInsightsResponse {
+    pub insights: String,
+    pub question: String,
+    pub generated_at: String,
+}
