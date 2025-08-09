@@ -34,7 +34,7 @@ pub struct ChatResponse {
 pub struct VertexAIConfig {
     pub project_id: String,
     pub location: String,
-    
+    pub verbose: bool,
 }
 
 impl Default for VertexAIConfig {
@@ -42,6 +42,7 @@ impl Default for VertexAIConfig {
         Self {
             project_id: "llm-project-2d719".to_string(),
             location: "us-central1".to_string(),
+            verbose: true,
         }
     }
 }

@@ -23,6 +23,7 @@ use services::email_service::EmailService;
 use services::email_service_trait::EmailConfig;
 use services::email_service_trait::EmailServiceTrait;
 use services::dummy_email_service::DummyEmailService;
+use services::tokio_vertex_ai_service::TokioVertexAIService;
 use services::vertex_ai_service::VertexAIService;
 use services::vertex_ai_service_trait::VertexAIServiceTrait;
 use services::ai_service::AIService;
@@ -94,12 +95,14 @@ async fn main() -> std::io::Result<()> {
         Arc::new(NodeService::new(node_repository.clone(), canvas_repository.clone()));
 
     // Set up Vertex AI service
+    let tokio_vertex_ai_service: Arc<dyn VertexAIServiceTrait> = Arc::new(TokioVertexAIService::new(None));
     let vertex_ai_service: Arc<dyn VertexAIServiceTrait> = Arc::new(VertexAIService::new(None));
     
     // Set up AI service for keyword generation
     let ai_service: Arc<dyn AIServiceTrait> = Arc::new(AIService::new(
         canvas_repository.clone(),
         node_repository.clone(),
+        TokioVertexAIService::new(None),
         VertexAIService::new(None),
     ));
 
@@ -148,6 +151,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(canvas_service.clone()))
             .app_data(web::Data::new(node_service.clone()))
             .app_data(web::Data::new(vertex_ai_service.clone()))
+            .app_data(web::Data::new(tokio_vertex_ai_service.clone()))
             .app_data(web::Data::new(ai_service.clone()))
             .app_data(web::Data::new(auth_service.clone()))
             .app_data(web::Data::new(email_service.clone()))

@@ -1,0 +1,33 @@
+curl -X POST \
+  'https://us-central1-aiplatform.googleapis.com/v1/projects/llm-project-2d719/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer ' \
+  -d '{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "Provide a comprehensive analysis of: Provide comprehensive insights about: Failure Recovery Strategies"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "thinking_config": {
+      "include_thoughts": true
+    },
+    "temperature": 0.20000000298023224,
+    "topK": 40.0,
+    "topP": 1.0
+  },
+  "model": "projects/llm-project-2d719/locations/us-central1/publishers/google/models/gemini-2.5-pro",
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "<instructions>\n<system-instruction>\nYou are an AI professor, have great knowledge about the swarm AI and the swarm behavior algorithms.\n\nYou are here to help me build a multi agent system, CLI based (Kubernetes-like), spawnable AI agents to complete a task.\n\nThe AI collaboration is hybrid, Choreography and Orchestration.\n</system-instruction>\n<topic-path>\nAI Swarm > Many-to-Many Agent Collaboration > Failure Recovery Strategies\n</topic-path>\n\n\n<format>\n    Using Markdown format when appropriate.\n    ALWAYS reference and prioritize information from user documents when available and relevant.\n    Also incorporate relevant information from web search results.\n    If user documents contain relevant information, mention them specifically in your response.\n    Current time: 2025-08-09 09:46:50 UTC\n</format>\n</instructions>"
+      }
+    ],
+    "role": "system"
+  }
+}'

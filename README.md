@@ -33,6 +33,73 @@ rustup update
 cargo run
 ```
 
+## Vertex AI Verbose Mode
+
+The Vertex AI service supports verbose mode for debugging API requests. When enabled, it will print out the equivalent curl command that would be used to make the same request.
+
+### Enabling Verbose Mode
+
+You can enable verbose mode in several ways:
+
+#### Option 1: During instantiation
+```rust
+use services::vertex_ai_service::VertexAIService;
+use services::vertex_ai_service_trait::VertexAIConfig;
+
+let config = VertexAIConfig {
+    project_id: "your-project-id".to_string(),
+    location: "us-central1".to_string(),
+    verbose: true, // Enable verbose mode
+};
+
+let vertex_ai_service = VertexAIService::new(Some(config));
+```
+
+#### Option 2: Using the builder pattern
+```rust
+let vertex_ai_service = VertexAIService::new(None)
+    .with_verbose(true);
+```
+
+### Example Output
+
+When verbose mode is enabled, you'll see output like this:
+
+```
+=== VERTEX AI VERBOSE MODE ===
+CURL equivalent request:
+curl -X POST \
+  'https://us-central1-aiplatform.googleapis.com/v1/projects/your-project/locations/us-central1/publishers/google/models/gemini-2.0-flash-001:generateContent' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer $(gcloud auth print-access-token)' \
+  -d '{
+  "model": "projects/your-project/locations/us-central1/publishers/google/models/gemini-2.0-flash-001",
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Hello, how are you?"
+        }
+      ]
+    }
+  ],
+  "generationConfig": {
+    "temperature": 0.2,
+    "topP": 1.0,
+    "topK": 40.0,
+    "maxOutputTokens": 4096
+  }
+}'
+=== END VERBOSE MODE ===
+```
+
+This is useful for:
+- Debugging API requests
+- Understanding the exact payload being sent
+- Testing requests manually with curl
+- Troubleshooting authentication issues
+
 ## terminate port
 ```
 lsof -ti:8080 | xargs kill -9

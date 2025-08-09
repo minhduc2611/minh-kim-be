@@ -137,6 +137,7 @@ impl WeaviateClient {
         // For now, we'll use a simple placeholder embedding
         // In a real implementation, you would call an embedding service
         // This is a placeholder that returns a dummy embedding
+        println!("-----> Generating embedding for text: {:?}", text);
         Ok(vec![0.1; 1536]) // OpenAI embedding dimension
     }
 

@@ -9,7 +9,7 @@ use google_cloud_aiplatform_v1::model::tool::GoogleSearch;
 use async_trait::async_trait;
 use crate::services::vertex_ai_service_trait::{VertexAIServiceTrait, VertexAIServiceError, VertexAIRequestConfig, VertexAIConfig, ChatRequest, ChatResponse};
 use crate::services::agents_service::get_mock_agents;
-
+use serde_json;
 
 pub struct VertexAIService {
     config: VertexAIConfig,
@@ -21,9 +21,7 @@ impl VertexAIService {
             config: config.unwrap_or_default(),
         }
     }
-
     pub async fn generate_content(&self, prompt: &str, request_config: Option<VertexAIRequestConfig>) -> Result<String, VertexAIServiceError> {
-        println!("VertexAIService::generate_content called with prompt");
         
         let request_config = request_config.unwrap_or(VertexAIRequestConfig {
             model_id: "gemini-2.0-flash-001".to_string(),
@@ -57,7 +55,7 @@ impl VertexAIService {
 
         // Create the API Client
         let prediction_client = PredictionService::builder().build().await
-            .map_err(|e| VertexAIServiceError::ApiError(e.to_string()))?;
+            .map_err(|e| VertexAIServiceError::ApiError(format!("Error creating prediction client: {:?}", e)))?;
 
         // Construct the Request
         let mut user_content = Content::default();
@@ -71,13 +69,14 @@ impl VertexAIService {
         generation_config.temperature = Some(temperature);
         generation_config.top_p = Some(1.0);
         generation_config.top_k = Some(40.0);
-        generation_config.max_output_tokens = Some(2048);
+        // generation_config.max_output_tokens = Some(4096);
         if request_config.include_thoughts {
             let mut thinking_config = ThinkingConfig::default();
             thinking_config.include_thoughts = Some(true);
             generation_config.thinking_config = Some(thinking_config);
         }
         if let Some(schema) = response_schema {
+            println!("VertexAIService::generate_content using response schema");
             generation_config.response_schema = Some(schema);
             generation_config.response_mime_type = "application/json".to_string();
         }
@@ -88,6 +87,7 @@ impl VertexAIService {
         request.generation_config = Some(generation_config);
         let mut tool = Tool::default();
         if request_config.use_google_search {
+            println!("VertexAIService::generate_content using google search");
             tool.google_search = Some(GoogleSearch::default());
         }
         if request_config.use_retrieval {
@@ -108,7 +108,7 @@ impl VertexAIService {
             .with_request(request)
             .send()
             .await
-            .map_err(|e| VertexAIServiceError::ApiError(e.to_string()))?;
+            .map_err(|e| VertexAIServiceError::ApiError(format!("Error generating content: {:?}", e)))?;
 
         let mut response_text = String::new();
 
@@ -121,7 +121,7 @@ impl VertexAIService {
                 }
             }
         }
-
+        
         println!("VertexAIService::generate_content returning response: {}", response_text);
         Ok(response_text)
     }

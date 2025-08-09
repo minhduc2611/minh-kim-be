@@ -4,8 +4,9 @@ use crate::models::canvas::GraphNode;
 use crate::models::node::{InsertNode, InsertRelationship};
 use crate::models::common::{GenerateInsightsRequest, GenerateInsightsResponse, GenerateInsightsForTopicNodeRequest, GenerateInsightsForTopicNodeResponse, SearchResult, DocumentContext};
 use crate::services::ai_service_trait::{AIServiceError, AIServiceTrait};
+use crate::services::tokio_vertex_ai_service::TokioVertexAIService;
 use crate::services::vertex_ai_service::VertexAIService;
-use crate::services::vertex_ai_service_trait::VertexAIRequestConfig;
+use crate::services::vertex_ai_service_trait::{VertexAIRequestConfig, VertexAIServiceTrait};
 use crate::services::internet_search_trait::{InternetSearchTrait, SearchRequest as InternetSearchRequest, NewsSearchRequest};
 use crate::services::weaviate_client::WeaviateClient;
 use async_trait::async_trait;
@@ -39,6 +40,7 @@ struct LocalSearchResult {
 pub struct AIService {
     canvas_repository: Arc<dyn CanvasRepository + Send + Sync>,
     node_repository: Arc<dyn NodeRepository + Send + Sync>,
+    tokio_vertex_ai_service: TokioVertexAIService,
     vertex_ai_service: VertexAIService,
     internet_search_service: Option<Arc<dyn InternetSearchTrait + Send + Sync>>,
     weaviate_client: Option<WeaviateClient>,
@@ -48,11 +50,13 @@ impl AIService {
     pub fn new(
         canvas_repository: Arc<dyn CanvasRepository + Send + Sync>,
         node_repository: Arc<dyn NodeRepository + Send + Sync>,
+        tokio_vertex_ai_service: TokioVertexAIService,
         vertex_ai_service: VertexAIService,
     ) -> Self {
         Self {
             canvas_repository,
             node_repository,
+            tokio_vertex_ai_service,
             vertex_ai_service,
             internet_search_service: None,
             weaviate_client: None,
@@ -460,7 +464,7 @@ When given a search query, provide detailed, informative explanations.
 
         // Generate content using Vertex AI
         let response_text = self
-            .vertex_ai_service
+            .tokio_vertex_ai_service
             .generate_content(
                 &format!("Provide a comprehensive analysis of: {}", request.question),
                 Some(request_config),
@@ -560,7 +564,7 @@ When given a search query, provide detailed, informative explanations.
                 }
             }
         }
-
+        println!("Found Contexts documents: {}", document_context.len());
         // Build document context section
         let document_context_section = if !document_context.is_empty() {
             let context_text = document_context
@@ -610,6 +614,7 @@ When given a search query, provide detailed, informative explanations.
                             content: result.content,
                             published_date: result.published_date,
                         }).collect());
+                        println!("Web search results length: {}", web_search_results.as_ref().unwrap().len());
                     }
                     Err(e) => {
                         eprintln!("Web search failed: {}", e);
@@ -635,6 +640,7 @@ When given a search query, provide detailed, informative explanations.
                             content: result.content,
                             published_date: result.published_date,
                         }).collect());
+                        println!("News search results length: {}", news_search_results.as_ref().unwrap().len());
                     }
                     Err(e) => {
                         eprintln!("News search failed: {}", e);
@@ -690,7 +696,7 @@ When given a search query, provide detailed, informative explanations.
             model_id: "gemini-2.5-pro".to_string(),
             agent_key: None,
             system_prompt: Some(instructions.clone()),
-            include_thoughts: false,
+            include_thoughts: true,
             use_google_search: false,
             use_retrieval: false,
             response_schema: None,
@@ -698,41 +704,100 @@ When given a search query, provide detailed, informative explanations.
 
         // Generate content using Vertex AI
         let question = request.question.unwrap_or_else(|| format!("Provide comprehensive insights about: {}", topic_node.name));
+        let prompt = format!("Provide a comprehensive analysis of: {}", question);
+        
+        println!("Sending prompt to Vertex AI: {}", prompt);
+        
         let response_text = self
-            .vertex_ai_service
-            .generate_content(
-                &format!("Provide a comprehensive analysis of: {}", question),
-                Some(request_config),
-            )
+            .tokio_vertex_ai_service
+            .generate_content(&prompt, Some(request_config))
             .await
-            .map_err(|e| AIServiceError::AIServiceError(format!("AI service error: {}", e)))?;
+            .map_err(|e| {
+                println!("Vertex AI error: {}", e);
+                AIServiceError::AIServiceError(format!("AI service error: {}", e))
+            })?;
 
+        println!("Response text length: {}", response_text.len());
+        if response_text.len() > 200 {
+            println!("Response text (first 200 chars): {}", &response_text[..200]);
+        } else {
+            println!("Response text: {}", response_text);
+        }
         // Create the response
         let response = GenerateInsightsForTopicNodeResponse {
-            insights: response_text,
+            insights: response_text.clone(),
             topic_node_id: request.topic_node_id.clone(),
             canvas_id: request.canvas_id.clone(),
-            question,
+            question: question.clone(),
             generated_at: chrono::Utc::now().to_rfc3339(),
-            web_search_results,
-            news_search_results,
-            document_context: if document_context.is_empty() { None } else { Some(document_context) },
+            web_search_results: web_search_results.clone(),
+            news_search_results: news_search_results.clone(),
+            document_context: if document_context.is_empty() { None } else { Some(document_context.clone()) },
         };
 
-        // // Save to neo4j - combine with existing knowledge
-        // const updatedKnowledge = {
-        //     ...currentKnowledge,
-        //     googleSearchStatus: "completed",
-        //     latestGoogleSearch: finalResult,
-        //     searchHistory: [
-        //       ...(currentKnowledge.searchHistory || []),
-        //       finalResult
-        //     ].slice(-5) // Keep only last 5 searches
-        //   };
-  
-        //   await neo4jStorage.updateTopic(sourceTopic.id, {
-        //     knowledge: JSON.stringify(updatedKnowledge)
-        //   });
+        // Save search results to Neo4j - combine with existing knowledge
+        let search_data = serde_json::json!({
+            "googleSearchStatus": "completed",
+            "latestGoogleSearch": {
+                "insights": response_text,
+                "web_search_results": web_search_results,
+                "news_search_results": news_search_results,
+                "document_context": document_context,
+                "generated_at": chrono::Utc::now().to_rfc3339(),
+                "question": question
+            },
+            "searchHistory": {
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "web_search_results": web_search_results,
+                "news_search_results": news_search_results,
+                "insights": response_text
+            }
+        });
+
+        // Get current knowledge from the topic node
+        let current_knowledge = topic_node.knowledge.clone().unwrap_or_default();
+        let mut updated_knowledge = if !current_knowledge.is_empty() {
+            serde_json::from_str::<serde_json::Value>(&current_knowledge)
+                .unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        // Add search history (keep only last 5 searches)
+        if let Some(history) = updated_knowledge.get_mut("searchHistory") {
+            if let Some(history_array) = history.as_array_mut() {
+                history_array.push(search_data["searchHistory"].clone());
+                // Keep only last 5 searches
+                if history_array.len() > 5 {
+                    history_array.drain(0..history_array.len() - 5);
+                }
+            }
+        } else {
+            updated_knowledge["searchHistory"] = serde_json::json!([search_data["searchHistory"]]);
+        }
+
+        // Update the latest search data
+        updated_knowledge["googleSearchStatus"] = search_data["googleSearchStatus"].clone();
+        updated_knowledge["latestGoogleSearch"] = search_data["latestGoogleSearch"].clone();
+
+        // Convert back to string
+        let updated_knowledge_str = serde_json::to_string(&updated_knowledge)
+            .map_err(|e| AIServiceError::DatabaseError(format!("Failed to serialize knowledge: {}", e)))?;
+
+        // Update the topic node in Neo4j
+        let update_request = crate::models::node::UpdateNodeRequest {
+            name: None,
+            node_type: None,
+            description: None,
+            knowledge: Some(updated_knowledge_str),
+            position_x: None,
+            position_y: None,
+        };
+
+        self.node_repository
+            .update_topic_node(&request.topic_node_id, update_request)
+            .await
+            .map_err(|e| AIServiceError::DatabaseError(format!("Failed to update topic node: {}", e)))?;
 
         Ok(response)
     }

@@ -17,6 +17,7 @@ pub mod node_service;
 
 pub mod vertex_ai_service_trait;
 pub mod vertex_ai_service;
+pub mod tokio_vertex_ai_service;
 
 pub mod agents_service;
 
